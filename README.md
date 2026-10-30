@@ -1,5 +1,7 @@
 # Terraform Associate
 
+> Code-first study notes, a cheat sheet and runnable examples for the HashiCorp Terraform Associate certification.
+
 Personal study notes and cheat sheet from a HashiCorp Terraform Associate certification course.
 Code and commands only: no conceptual or theory notes (e.g. what IaC is). Quick reference first.
 
