@@ -19,3 +19,8 @@ resource "terraform_data" "app" {
     ports = var.docker_ports
   }
 }
+
+# Look each world up in the map; "unknown" if it is missing
+locals {
+  world_planets = { for w in var.worlds : w => lookup(var.world_map, w, "unknown") }
+}
