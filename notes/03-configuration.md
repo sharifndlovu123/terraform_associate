@@ -70,6 +70,38 @@ Named values are not objects, so no `[]` access on them.
 
 Examples: [`06-dynamic-blocks`](../examples/06-dynamic-blocks) (runs anywhere), [`06-dynamic-blocks/aws-network`](../examples/06-dynamic-blocks/aws-network) (security group `ingress` rules from a list in `locals`)
 
+## For expressions and splat
+
+```hcl
+[for s in var.list : upper(s)]                 # [ ] -> tuple
+{for s in var.list : s => upper(s)}            # { } -> object, needs key => value
+[for k, v in var.map : length(k) + length(v)]  # map: key and value
+[for i, v in var.list : "${i} is ${v}"]        # list: index and element
+[for s in var.list : upper(s) if s != ""]      # `if` filters elements out
+var.servers[*].id                              # splat: short form of [for o in var.servers : o.id]
+```
+
+- Input can be a list, set, tuple, map or object
+- Unordered to ordered conversion picks an order: maps/objects by key A-Z, sets of strings A-Z, anything else arbitrary
+- Splat on a non-list value wraps it in a one-item list; on `null` it returns an empty list/tuple. That makes it handy for optional object variables:
+
+```hcl
+variable "website" {
+  type    = object({ index_document = string, error_document = string })
+  default = null
+}
+
+dynamic "website" {
+  for_each = var.website[*]          # null -> no block, object -> exactly one block
+  content {
+    index_document = website.value.index_document
+    error_document = website.value.error_document
+  }
+}
+```
+
+Try these in [`terraform console`](../cheatsheet.md#terraform-console).
+
 ## Resource behaviour on apply
 
 | Symbol | Action | When |

@@ -4,16 +4,21 @@
 
 | Command | What it does |
 |---------|--------------|
-| `terraform init` | Download providers/modules, configure backend |
-| `terraform fmt` | Format files to canonical style |
+| `terraform init` | Download providers/modules, configure backend (`-upgrade`, `-plugin-dir=PATH`, `-lockfile=MODE`) |
+| `terraform get` | Download/refresh modules only (`-update`) |
+| `terraform fmt` | Format files to canonical style (`-check`, `-diff`, `-recursive`) |
 | `terraform validate` | Check syntax and internal consistency |
-| `terraform plan` | Show what would change |
-| `terraform apply` | Make the changes |
+| `terraform plan` | Show what would change (`-out=FILE`, `-refresh-only`, `-replace=ADDR`, `-target=ADDR`) |
+| `terraform apply` | Make the changes (`-auto-approve`; `apply FILE` runs a saved plan with no prompt) |
+| `terraform apply -replace='ADDR'` | Rebuild one resource (replaces deprecated `taint`) |
+| `terraform apply -refresh-only` | Update state to match reality (replaces deprecated `refresh`) |
+| `terraform import ADDR ID` | Adopt an existing real resource into state, one at a time |
 | `terraform destroy` | Tear everything down |
 | `terraform show` | Inspect state or a saved plan |
 | `terraform output [name]` | Print output values (`-json`, `-raw` for a single string) |
 | `terraform apply -var 'k=v'` / `-var-file=f.tfvars` | Set variables from the CLI |
 | `terraform state list` | List resources in state |
+| `terraform state show ADDR` / `mv` / `rm` / `pull` / `push` / `replace-provider` | Inspect, rename/move, forget, download, upload, switch provider |
 
 ## HCL patterns
 
@@ -66,6 +71,10 @@ for_each = var.on ? [1] : []      # trick: optional block (one or none)
 
 Runnable versions of all of these are in [`examples/`](examples/).
 
+## Resource addresses
+
+`[module path][resource spec]`: `aws_instance.web`, `aws_instance.web[3]` (count), `aws_instance.web["blue"]` (for_each), `module.net.aws_subnet.public`, `data.aws_vpc.main`. Quote them in a shell.
+
 ## Terraform console
 
 Interactive prompt for trying expressions before putting them in config. Run it inside an initialised config directory.
@@ -108,6 +117,11 @@ lookup({ a = 1, b = 2 }, "c", 0)                      # -> 0 (key missing, falls
 {for k, v in { a = 1, b = 2 } : k => v * 10}          # -> { a = 10, b = 20 }
 [for n in ["a", "b", "c"] : upper(n) if n != "b"]     # -> ["A", "C"] (`if` filters)
 
+# for over a map gives key and value, over a list gives index and element
+[for k, v in { b = "xx", a = "y" } : "${k}=${v}"]     # -> ["a=y", "b=xx"] (map keys come out A-Z)
+[for i, v in ["hello", "world"] : "${i} is ${v}"]     # -> ["0 is hello", "1 is world"]
+{for s in ["hello", "world"] : s => upper(s)}         # -> { hello = "HELLO", world = "WORLD" } ({ } builds an object, needs `=>`)
+
 # short for expression = Splat: [*] is shorthand for a plain "pull one attribute from every element" loop
 [{ a = 1 }, { a = 2 }][*].a                           # -> [1, 2]
 [for o in [{ a = 1 }, { a = 2 }] : o.a]               # -> [1, 2] (the long form of the line above)
@@ -117,6 +131,11 @@ var.docker_ports[*].external                          # -> tolist([80]) (works o
 values({ x = { a = 1 }, y = { a = 2 } })[*].a         # -> [1, 2] (a map needs values() first)
 null[*].a                                             # -> [] (null becomes an empty list)
 "solo"[*]                                             # -> ["solo"] (a single value becomes a one-item list)
+
+# arguments: min/max take separate numbers, a list needs `...` to expand
+min(20, 200, 12)                                      # -> 12
+min([20, 200, 12]...)                                 # -> 12
+min([20, 200, 12])                                    # -> Error: Invalid function argument ("numbers" parameter: number required, but have tuple)
 
 # type conversion and inspection
 tostring(12)                                          # -> "12"
@@ -153,6 +172,8 @@ Gotchas:
 
 - Splat only extracts attributes from a list; to filter or transform, use the full `for` expression. On a map it fails with "does not have an attribute", so call `values()` first
 - A splat returns a `list` but `[for ...]` returns a `tuple`, so `a[*].x == [for i in a : i.x]` is `false`; wrap the for in `tolist()` to compare (check with `type()`)
+- `[ ]` around a `for` gives a tuple, `{ }` gives an object (and needs `key => value`)
+- Converting an unordered type to an ordered one picks an order: maps/objects by key A-Z, sets of strings A-Z, anything else is arbitrary
 - Piping a multi-line heredoc in fails with "Invalid expression" (each line is parsed on its own); stick to single-line expressions when scripting
 - `file()` and `path.module` resolve relative to the directory you launched the console from
 
@@ -165,6 +186,7 @@ Read a version by **position**: first digit = **major**, second = **minor**, thi
 - `~> 3.6` means `>= 3.6.0, < 4.0.0` (major fixed); `~> 3.6.0` means `>= 3.6.0, < 3.7.0` (major and minor fixed)
 - Operators: `=`, `!=`, `>`, `>=`, `<`, `<=`, `~>`; a comma means AND
 - `.terraform.lock.hcl` records the exact provider versions chosen: commit it, `terraform init -upgrade` to move it
+- Progressive versioning: stay current in small steps and run a nightly `plan`/build as the early warning (see `07-versions/nightly-check.sh`)
 - Hands-on version in [`examples/07-versions`](examples/07-versions)
 
 ## Variable precedence (later wins)
@@ -177,6 +199,9 @@ env `TF_VAR_*` < `terraform.tfvars` < `terraform.tfvars.json` < `*.auto.tfvars[.
 
 ## Gotchas
 
+- `apply FILE` (saved plan) skips the approval prompt; `taint` and `refresh` are deprecated for `-replace` and `-refresh-only`
+- `state rm` forgets a resource without destroying it; renaming a resource without `state mv` / `moved` destroys and recreates it
+- `.terraform.lock.hcl` = provider dependency lock; `.terraform.tfstate.lock.info` = state lock while a run is active
 - `sensitive = true` hides values in the CLI only; they stay in the state file in plain text
 - `for_each` needs a map or set: wrap lists in `toset()`
 - `count` / `for_each` values must be known at plan time
