@@ -50,11 +50,111 @@ lifecycle {
   ignore_changes        = [tags]
 }
 
+# dynamic block: one nested block per element
+dynamic "ingress" {
+  for_each = var.rules            # iterator is named after the block: ingress.key / ingress.value
+  # iterator = rule               # optional rename -> rule.value
+  content {
+    from_port = ingress.value.port
+  }
+}
+for_each = var.on ? [1] : []      # trick: optional block (one or none)
+
 # string directives
 "Hi %{ if var.who != "" }${var.who}%{ else }there%{ endif }"
 ```
 
 Runnable versions of all of these are in [`examples/`](examples/).
+
+## Terraform console
+
+Interactive prompt for trying expressions before putting them in config. Run it inside an initialised config directory.
+
+```bash
+terraform console                      # leave with `exit` or Ctrl+D
+terraform console -var environment=prod
+terraform console -plan                # evaluate against a fresh plan instead of current state
+echo '1 + 2' | terraform console       # one-off, handy in scripts
+```
+
+- Never changes state; it only reads it
+- Sees the config's `var.*`, `local.*` and any resources already in state (e.g. `terraform_data.app.output.tags.Service`)
+- Before the first apply there is no state, so resource attributes print `(known after apply)`
+- `type(x)` only exists in the console, useful for checking what type an expression really is
+
+Samples (output shown after `->`):
+
+```hcl
+# strings
+"Hello, ${upper("world")}!"                           # -> "Hello, WORLD!"
+"Hello, %{ if 1 > 0 }yes%{ else }no%{ endif }"        # -> "Hello, yes"
+format("%s-%03d", "web", 7)                           # -> "web-007"
+
+# operators
+5 + 3 * 2                                             # -> 11
+10 % 3                                                # -> 1
+1 == 1 && !false                                      # -> true
+
+# collections
+length(["a", "b", "c"])                               # -> 3
+join("-", ["a", "b", "c"])                            # -> "a-b-c"
+split(",", "x,y,z")                                   # -> tolist(["x", "y", "z"])
+toset(["a", "b", "a"])                                # -> toset(["a", "b"])
+merge({ a = 1 }, { b = 2 })                           # -> { a = 1, b = 2 }
+lookup({ a = 1, b = 2 }, "c", 0)                      # -> 0 (key missing, falls back to the default)
+
+# for expressions
+[for n in ["a", "b"] : upper(n)]                      # -> ["A", "B"]
+{for k, v in { a = 1, b = 2 } : k => v * 10}          # -> { a = 10, b = 20 }
+[for n in ["a", "b", "c"] : upper(n) if n != "b"]     # -> ["A", "C"] (`if` filters)
+
+# short for expression = Splat: [*] is shorthand for a plain "pull one attribute from every element" loop
+[{ a = 1 }, { a = 2 }][*].a                           # -> [1, 2]
+[for o in [{ a = 1 }, { a = 2 }] : o.a]               # -> [1, 2] (the long form of the line above)
+[{ a = 1 }, { a = 2 }].*.a                            # -> [1, 2] (older `.*` spelling, same result)
+[{ a = 1, b = [10, 20] }, { a = 2, b = [30] }][*].b[0]  # -> [10, 30] (keeps going after the splat)
+var.docker_ports[*].external                          # -> tolist([80]) (works on a list of objects)
+values({ x = { a = 1 }, y = { a = 2 } })[*].a         # -> [1, 2] (a map needs values() first)
+null[*].a                                             # -> [] (null becomes an empty list)
+"solo"[*]                                             # -> ["solo"] (a single value becomes a one-item list)
+
+# type conversion and inspection
+tostring(12)                                          # -> "12"
+tonumber("42")                                        # -> 42
+type(["a", 1])                                        # -> tuple([string, number])
+
+# networking
+cidrsubnet("10.0.0.0/16", 8, 1)                       # -> "10.0.1.0/24"
+```
+
+`cidrsubnet(prefix, newbits, netnum)` carves one smaller subnet out of a bigger network:
+
+| Param | Meaning | In the sample |
+|-------|---------|---------------|
+| `prefix` | The parent network, as a CIDR string | `"10.0.0.0/16"` |
+| `newbits` | How many bits to **add** to the prefix length, so the subnet mask grows (`/16` + 8 = `/24`) | `8` |
+| `netnum` | Which subnet to pick from the ones that fit, counting from 0 | `1` (the second one) |
+
+- Returns a CIDR string: the chosen subnet, `"10.0.1.0/24"` here
+- `newbits` decides the subnet **size**, `netnum` decides which **slot** it is
+- `netnum` runs from 0 to `2^newbits - 1`; with `newbits = 8` that is 0 to 255, and 256 errors
+- More examples: `(…, 8, 0)` -> `"10.0.0.0/24"`, `(…, 8, 2)` -> `"10.0.2.0/24"`, `(…, 4, 1)` -> `"10.0.16.0/20"`
+- Typical use: one VPC range, one `cidrsubnet` call per subnet using `count.index` as `netnum`
+
+Try the variable/local ones from [`examples/01-variables-outputs-locals`](examples/01-variables-outputs-locals):
+
+```hcl
+var.environment                # -> "dev"
+local.common_tags              # -> { Environment = "dev", Owner = "Platform Team", Service = "billing-api" }
+var.docker_ports[0].external   # -> 80
+```
+
+Gotchas:
+
+- Splat only extracts attributes from a list; to filter or transform, use the full `for` expression. On a map it fails with "does not have an attribute", so call `values()` first
+- A splat returns a `list` but `[for ...]` returns a `tuple`, so `a[*].x == [for i in a : i.x]` is `false`; wrap the for in `tolist()` to compare (check with `type()`)
+- Piping a multi-line heredoc in fails with "Invalid expression" (each line is parsed on its own); stick to single-line expressions when scripting
+- `file()` and `path.module` resolve relative to the directory you launched the console from
 
 ## Variable precedence (later wins)
 

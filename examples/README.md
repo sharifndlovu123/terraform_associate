@@ -1,7 +1,8 @@
 # Examples
 
 Every folder is a self-contained config that runs as-is. They only use `terraform_data` (built in) and the
-`random`, `local` and `null` providers, so no cloud account or credentials are needed.
+`random`, `local`, `null` and `archive` providers, so no cloud account or credentials are needed.
+The one exception is [`06-dynamic-blocks/aws-network`](06-dynamic-blocks/aws-network), which describes real AWS resources: `terraform init` and `terraform validate` work anywhere, but `apply` needs AWS credentials.
 
 ```bash
 cd examples/<folder>
@@ -12,12 +13,14 @@ terraform destroy
 
 | Folder | Covers |
 |--------|--------|
-| [`01-variables-outputs-locals`](01-variables-outputs-locals) | variable types, validation, sensitive, `.tfvars` loading, locals, outputs |
+| [`01-variables-outputs-locals`](01-variables-outputs-locals) | variable types (`list`, `map`, `object`), validation, sensitive, `.tfvars` loading and overriding, locals, `for` expressions, outputs |
 | [`02-meta-arguments`](02-meta-arguments) | `count`, `for_each`, `depends_on`, `lifecycle` |
 | [`03-data-and-expressions`](03-data-and-expressions) | data source, types, strings, heredoc, directives, operators, conditionals, named values |
 | [`04-provisioners`](04-provisioners) | `local-exec`, `null_resource` / `terraform_data` triggers, destroy-time provisioner |
 | [`04-provisioners/remote`](04-provisioners/remote) | `connection`, `file`, `remote-exec` (needs an SSH host to apply, validates without one) |
 | [`05-modules-and-provider-alias`](05-modules-and-provider-alias) | local module, provider `alias`, passing `providers` to a module |
+| [`06-dynamic-blocks/aws-network`](06-dynamic-blocks/aws-network) | AWS VPC, public subnets, internet gateway and default route, security group whose `ingress` rules come from a `dynamic` block (config in `locals`, no variables) |
+| [`06-dynamic-blocks`](06-dynamic-blocks) | `dynamic` blocks: iterate a map, custom `iterator`, a set (key = value), optional block via `[1]` / `[]` |
 
 Things to try:
 
@@ -38,4 +41,8 @@ terraform output -raw data_source
 
 # 04: change the trigger and watch the provisioners re-run
 terraform apply -var release=v2
+
+# 06: toggle an optional block, then list the zip entries
+terraform apply -var include_license=true
+python3 -c "import zipfile; print(zipfile.ZipFile('build/bundle.zip').namelist())"
 ```

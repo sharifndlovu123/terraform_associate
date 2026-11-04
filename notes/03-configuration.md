@@ -60,6 +60,16 @@ Named values are not objects, so no `[]` access on them.
 - **`provider`**: pick an aliased provider (`provider = aws.eu`)
 - **`lifecycle`**: `create_before_destroy`, `prevent_destroy`, `ignore_changes`
 
+## Dynamic blocks
+
+- Generate repeated nested blocks (e.g. `ingress`, `tag`, `source`) from a collection instead of writing each one
+- `dynamic "<block type>" { for_each = ...  content { ... } }`
+- The iterator is named after the block type (`source.key`, `source.value`); rename it with `iterator = x`
+- Optional block: `for_each = var.on ? [1] : []`
+- Only for nested blocks; for whole resources use `count` / `for_each`
+
+Examples: [`06-dynamic-blocks`](../examples/06-dynamic-blocks) (runs anywhere), [`06-dynamic-blocks/aws-network`](../examples/06-dynamic-blocks/aws-network) (security group `ingress` rules from a list in `locals`)
+
 ## Resource behaviour on apply
 
 | Symbol | Action | When |
