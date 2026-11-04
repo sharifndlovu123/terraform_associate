@@ -106,6 +106,78 @@ Error: Unsupported Terraform Core version
 This configuration does not support Terraform version 1.17.0.
 ```
 
+## Upgrading progressively: a nightly canary
+
+Pinning keeps you safe but lets you fall behind; floating to the newest keeps you current but breaks you at random.
+Do both: **pin what deploys, float a copy that only tests.**
+
+```
+ deploys (dev / staging / prod)      nightly canary, e.g. 02:00
+ -------------------------------     ---------------------------------------------
+ use the committed lock file         ignore the lock file
+ same versions every time            init -upgrade: newest versions the constraints allow
+                                     validate, then plan
+                                              |
+                              red: something upstream broke overnight
+                                   -> read the failure in the morning and fix it
+                              green: refresh the lock file in a PR
+                                   -> promote dev -> staging -> prod
+```
+
+- You find out about a breaking release **the morning after it ships**, not on the day you needed to deploy
+- Constraints set the blast radius: with `~> 3.6` the canary can pick up new minors and patches, but never `4.0.0`; a major upgrade stays a deliberate edit
+- The same idea works for the Terraform CLI: also run the canary on the newest Terraform release
+
+[`nightly-check.sh`](nightly-check.sh) is a working version of the canary. It copies the config **without** the lock file into a temp dir, runs `init -upgrade`, then `validate` and `plan`:
+
+```bash
+./nightly-check.sh        # exit 0 = still works, exit 1 = broken
+```
+
+```
+==> versions that moved since the committed lock file
+    random: 3.6.3 -> 3.9.1            # shown when the lock is behind
+==> validate
+==> plan
+OK: the newest allowed versions still work.
+    Safe to refresh the lock file: terraform init -upgrade, then commit .terraform.lock.hcl
+```
+
+```
+BROKEN: validate failed on the newest allowed versions. Fix it in the morning (update the code, or tighten a constraint).
+```
+
+Checked here with a current lock file, a stale lock file, a config that fails `validate` and one that fails `plan`.
+`plan` exiting 2 (changes to make) counts as healthy: the canary only cares that planning *works*.
+In real use, point the plan at a non-production environment with real state and credentials. Here the state is empty, so it plans two creates.
+
+**When it goes red**
+
+1. Read the failure and work out which provider or version caused it (the "versions that moved" lines tell you)
+2. Fix your code for the new behaviour, **or** hold back the bad release: `~> 3.6` -> `~> 3.6.0`, or `version = "~> 3.6, != 3.9.1"`
+3. If it is an upstream bug, keep the exclusion until a fixed release comes out, then relax the constraint again
+
+**Scheduling it** (sketches, not run here):
+
+```bash
+# cron: 02:00 every night, alert on failure
+0 2 * * * /path/to/examples/07-versions/nightly-check.sh || /path/to/notify-me.sh
+```
+
+```yaml
+# GitHub Actions
+on:
+  schedule:
+    - cron: "0 2 * * *"
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: examples/07-versions/nightly-check.sh
+```
+
 ## Modules
 
 Registry modules take a `version` argument with the same operators, for example `version = "~> 5.0"`.
