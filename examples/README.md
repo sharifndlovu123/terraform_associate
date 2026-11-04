@@ -19,6 +19,7 @@ terraform destroy
 | [`04-provisioners`](04-provisioners) | `local-exec`, `null_resource` / `terraform_data` triggers, destroy-time provisioner |
 | [`04-provisioners/remote`](04-provisioners/remote) | `connection`, `file`, `remote-exec` (needs an SSH host to apply, validates without one) |
 | [`05-modules-and-provider-alias`](05-modules-and-provider-alias) | local module, provider `alias`, passing `providers` to a module |
+| [`07-versions`](07-versions) | semantic versioning (major.minor.patch), `~>` and other constraint operators, `required_version`, the `.terraform.lock.hcl` file, common version errors |
 | [`06-dynamic-blocks/aws-network`](06-dynamic-blocks/aws-network) | AWS VPC, public subnets, internet gateway and default route, security group whose `ingress` rules come from a `dynamic` block (config in `locals`, no variables) |
 | [`06-dynamic-blocks`](06-dynamic-blocks) | `dynamic` blocks: iterate a map, custom `iterator`, a set (key = value), optional block via `[1]` / `[]` |
 

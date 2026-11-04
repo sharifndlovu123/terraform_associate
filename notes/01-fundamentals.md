@@ -20,6 +20,8 @@ terraform {
 }
 ```
 
+Version numbers read major.minor.patch (first, second, third digit). Constraint operators and the lock file are in [`examples/07-versions`](../examples/07-versions).
+
 Also available: `experiments` (opt in to unfinished language features) and `provider_meta`.
 
 ## Providers

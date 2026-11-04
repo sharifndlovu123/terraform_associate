@@ -156,6 +156,17 @@ Gotchas:
 - Piping a multi-line heredoc in fails with "Invalid expression" (each line is parsed on its own); stick to single-line expressions when scripting
 - `file()` and `path.module` resolve relative to the directory you launched the console from
 
+## Versions
+
+Read a version by **position**: first digit = **major**, second = **minor**, third = **patch** (`3.9.1`). Spec: <https://semver.org>
+
+- patch bump `3.9.1 -> 3.9.2`: bug fix. minor bump `3.9.1 -> 3.10.0`: new feature, patch resets. major bump `3.9.1 -> 4.0.0`: breaking change, minor and patch reset
+- Compare parts as whole numbers: `3.10.0` is newer than `3.9.1`
+- `~> 3.6` means `>= 3.6.0, < 4.0.0` (major fixed); `~> 3.6.0` means `>= 3.6.0, < 3.7.0` (major and minor fixed)
+- Operators: `=`, `!=`, `>`, `>=`, `<`, `<=`, `~>`; a comma means AND
+- `.terraform.lock.hcl` records the exact provider versions chosen: commit it, `terraform init -upgrade` to move it
+- Hands-on version in [`examples/07-versions`](examples/07-versions)
+
 ## Variable precedence (later wins)
 
 env `TF_VAR_*` < `terraform.tfvars` < `terraform.tfvars.json` < `*.auto.tfvars[.json]` < `-var` / `-var-file`
