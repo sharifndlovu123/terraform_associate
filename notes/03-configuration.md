@@ -111,11 +111,48 @@ Try these in [`terraform console`](../cheatsheet.md#terraform-console).
 | `~` | update in place | an argument changed and the API allows editing it |
 | `-/+` | replace | the API can't edit that argument, so it is destroyed and rebuilt |
 
+## Resources
+
+```hcl
+resource "aws_db_instance" "example" {
+  # ...
+  timeouts {          # only on resource types that offer it
+    create = "60m"
+    delete = "2h"
+  }
+}
+```
+
+- The resource type (`aws_instance`) picks the kind of infrastructure object and implies the provider
+- `timeouts` sets how long an operation may run before it counts as failed
+
 ## Types and values
 
 - Primitive: `string`, `number`, `bool`
-- Collection/structural: `list` (tuple), `map` (object)
+- Collection (many values of **one** type): `list`, `map`, `set`
+- Structural (several distinct types, needs a schema): `object`, `tuple`
 - `null` means "not set", so the provider's own default applies
+
+```hcl
+variable "planet"  { type = list(string) }                    # var.planet[0]
+variable "plans"   { type = map(string) }                     # var.plans["PlanB"]
+variable "person"  { type = object({ name = string, age = number }) }
+variable "mixed"   { type = tuple([string, number, bool]) }   # ["a", 15, true]
+
+variable "with_optional" {
+  type = object({
+    a = string                    # required
+    b = optional(string)          # optional, null when omitted
+    c = optional(number, 5)       # optional with a default
+  })
+}
+```
+
+- A **list** is indexed by number, a **map** by key
+- A **set** has no index and no order, all values share one type and are converted to match: `toset(["a", "b", 3])` gives `["3", "a", "b"]`
+- An **object** is a map with explicit, typed keys; a **tuple** is a list with a type per position
+
+Functions with samples: [cheat sheet](../cheatsheet.md#functions).
 
 ## Strings
 

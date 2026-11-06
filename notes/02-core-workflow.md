@@ -2,6 +2,18 @@
 
 Write -> `init` -> `validate` / `fmt` -> `plan` -> `apply` -> `destroy`.
 
+## Workflows by team size
+
+Always **Write -> Plan -> Apply**; what surrounds it grows with the team.
+
+| | Individual | Team (open source CLI) | Team on HCP Terraform |
+|---|---|---|---|
+| Write | local editor, code in a VCS, repeat `validate`/`plan` | feature branch per person (avoids conflicts, merge resolves them) | same, but variables and credentials live in the workspace |
+| Plan | commit locally, then plan | plan generated on the pull request by CI and shown in the PR | speculative plan on the PR, reviewable in the VCS and in HCP Terraform |
+| Apply | run `apply`, review, approve, then push commits | approve and merge, a build server runs `terraform apply` | merge triggers a remote run, a team member confirms and applies |
+
+Cost of the middle column: you build and run the CI/CD pipeline, choose and secure remote state, handle secrets on the build server, and get coarse access control (cannot say who may `apply` vs `destroy`). HCP Terraform takes most of that over, plus run history for audits.
+
 ## `terraform init`
 
 Run first in any new directory, and again after changing providers, modules or the backend.

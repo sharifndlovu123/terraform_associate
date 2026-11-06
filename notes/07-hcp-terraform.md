@@ -116,3 +116,9 @@ Checked against the official docs on 2026-11-04. Plans and limits change, so con
 - Workspaces here are **not** the same as CLI workspaces: an HCP Terraform workspace is mandatory and holds everything for one set of infrastructure; a CLI workspace is optional and only gives you extra state files in one directory
 - Execution mode decides where runs happen: remote (default), local (HCP Terraform only stores state) or via an agent
 - When runs are remote, provider credentials must be set as workspace variables, not on your laptop
+
+## `.terraformignore`
+
+- In a CLI-driven remote run, an archive of your configuration directory is uploaded to HCP Terraform. List paths to leave out in a `.terraformignore` at the **root** of the config (gitignore-style syntax)
+- Without one, the archive skips `.git/` and `.terraform/` (but keeps `.terraform/modules`)
+- Only the root file is read; `.terraformignore` files in subdirectories are ignored

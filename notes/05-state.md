@@ -67,6 +67,143 @@ Scenario: someone deletes a VM in the console on purpose.
 
 Other related flags: `-refresh=false` skips the refresh step (faster, riskier).
 
+## Backends
+
+A backend decides where state is stored and where operations run. Default (no `backend` block) is `local`.
+
+| Kind | Stores state | Runs operations (plan/apply) | Examples |
+|------|--------------|-------------------------------|----------|
+| Standard | yes | no, your CLI does | `s3`, `azurerm`, `gcs`, `consul`, `pg`, `kubernetes`, `http`, `oss`, `cos`, `swift`, `etcdv3` |
+| Enhanced | yes | yes | `local`, `remote` / the `cloud` block |
+
+- Third-party backends are standard backends. They need no HCP Terraform account
+- Locking depends on the backend: S3 (DynamoDB table, or native `use_lockfile` in newer versions), AzureRM, GCS, Consul, Postgres, Kubernetes and OSS (TableStore) lock; Artifactory does not; `http` locking is optional
+- With a remote backend like S3, a local backup copy of the state still appears on your machine
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket = "terraform-state000"
+    key    = "statefile"
+    region = "us-east-1"
+  }
+}
+
+terraform {
+  backend "local" {
+    path = "relative/path/to/terraform.tfstate"
+  }
+}
+```
+
+### HCP Terraform as a backend
+
+```hcl
+terraform {                       # older style
+  backend "remote" {
+    hostname     = "app.terraform.io"
+    organization = "company"
+    workspaces {
+      name = "my-app-prod"        # ONE workspace (or `prefix = "my-app-"` for several: apply asks which)
+    }                             # name + prefix together is an Invalid workspaces configuration error
+  }
+}
+
+terraform {                       # recommended: the cloud block (tags can select workspaces)
+  cloud {
+    organization = "company"
+    workspaces {
+      tags = ["app"]
+    }
+  }
+}
+```
+
+- In remote runs HCP Terraform executes the commands, so provider credentials (e.g. `AWS_ACCESS_KEY_ID`, marked sensitive) must be set as **environment variables in the workspace**, not on your laptop
+
+### Partial backend configuration
+
+Keep dynamic or sensitive settings out of the code:
+
+```hcl
+terraform {
+  backend "remote" {}
+}
+```
+
+```hcl
+# backend.hcl
+workspaces { name = "workspace" }
+hostname     = "app.terraform.io"
+organization = "company"
+```
+
+```bash
+terraform init -backend-config=backend.hcl
+terraform init -backend-config="key=value"   # single settings also work
+terraform init -migrate-state                # after changing backend: copy state over
+terraform init -reconfigure                  # ignore the old backend, no copy
+```
+
+Runnable offline version: [`examples/09-backends-and-remote-state`](../examples/09-backends-and-remote-state).
+
+## Reading another stack's state
+
+```hcl
+data "terraform_remote_state" "vpc" {
+  backend = "remote"
+  config = {
+    organization = "hashicorp"
+    workspaces = { name = "vpc-prod" }
+  }
+}
+
+resource "aws_instance" "foo" {
+  subnet_id = data.terraform_remote_state.vpc.outputs.subnet_id
+}
+```
+
+For a local backend use `backend = "local"` with `config = { path = "../network/terraform.tfstate" }`.
+
+- Only **root-level outputs** are exposed. To reach a nested module's value, add a pass-through root `output`
+- Whoever uses it must be able to read the **whole** state, which can hold secrets
+- Safer alternative: publish what others need to a separate place (SSM parameter, DNS, ...) and read it with ordinary **data sources**:
+
+```hcl
+data "aws_s3_bucket" "selected" { bucket = "bucket.test.com" }
+data "aws_route53_zone" "test_zone" { name = "test.com." }
+
+resource "aws_route53_record" "example" {
+  zone_id = data.aws_route53_zone.test_zone.id
+  name    = "bucket"
+  type    = "A"
+  alias {
+    name    = data.aws_s3_bucket.selected.website_domain
+    zone_id = data.aws_s3_bucket.selected.hosted_zone_id
+  }
+}
+```
+
+## State locking
+
+- Locking happens automatically on every operation that could write state, with no message unless acquiring the lock is slow
+- `-lock=false` skips it on most commands (not recommended); `-lock-timeout=30s` waits and retries
+- If a lock is left behind:
+
+```bash
+terraform force-unlock <LOCK_ID>          # the ID is printed when unlocking fails
+terraform force-unlock -force <LOCK_ID>   # skip the confirmation prompt
+```
+
+- Only unlock your own stuck lock. Unlocking while someone else's run is active allows two writers and can corrupt state
+
+## Protecting sensitive data
+
+- State can hold secrets (long-lived cloud credentials, passwords) and is a target
+- **Local backend**: plain-text JSON on disk; do not share it, never commit it
+- **HCP Terraform**: state encrypted at rest and in transit, not written to your disk; Terraform Enterprise adds detailed audit logging
+- **Third-party backends**: check they meet your security needs. For S3: turn on encryption and versioning, add a CloudTrail trail for data events
+
 ## Gotchas
 
 - `state rm` does not delete anything real, it only makes Terraform forget

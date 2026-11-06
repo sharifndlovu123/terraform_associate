@@ -177,6 +177,78 @@ Gotchas:
 - Piping a multi-line heredoc in fails with "Invalid expression" (each line is parsed on its own); stick to single-line expressions when scripting
 - `file()` and `path.module` resolve relative to the directory you launched the console from
 
+## Functions
+
+Try any of these in `terraform console` (results shown after `->`).
+
+**Numeric**
+
+```hcl
+abs(-12.4)                  # -> 12.4
+ceil(5.1)  floor(4.9)       # -> 6   4        (round up / down)
+min(20, 200, 12)  max(1, 9) # -> 12  9        (a list needs `...`: min(var.list...))
+log(16, 2)                  # -> 4            (log(number, base))
+pow(3, 2)                   # -> 9
+signum(-13)                 # -> -1           (-1, 0 or 1)
+parseint("FF", 16)          # -> 255          (string in the given base -> number)
+parseint("12", 2)           # -> Error: not a valid base 2 integer
+```
+
+**String**
+
+```hcl
+chomp("hello\r\n")                                  # -> "hello"       (trailing newlines)
+format("There are %d lights", 4)                    # -> "There are 4 lights"
+formatlist("Hello, %s!", ["Ann", "Bo"])             # -> ["Hello, Ann!", "Hello, Bo!"]
+indent(2, "a\nb")                                   # -> indents every line except the first
+join(", ", ["foo", "bar"])  split(",", "foo,bar")   # -> "foo, bar"   ["foo", "bar"]
+lower("HELLO")  upper("hello")  title("hello world") # -> "hello" "HELLO" "Hello World"
+regex("^(?P<scheme>[^:]+)://(?P<host>[^/]+)", "https://terraform.io/docs/")   # -> { scheme = "https", host = "terraform.io" }
+regexall("[a-z]+", "ab 12 cd")                      # -> ["ab", "cd"]  (list of all matches)
+replace("hello world", "/w.*d/", "everybody")       # -> "hello everybody" (/ / makes it a regex)
+strrev("hello")                                     # -> "olleh"
+substr("hello world", 1, 4)                         # -> "ello"        (offset, length)
+trim("?!hello?!", "!?")                             # -> "hello"       (any listed chars, both ends)
+trimprefix("helloworld", "hello")                   # -> "world"       (unchanged if no match)
+trimsuffix("helloworld", "world")                   # -> "hello"
+trimspace("  hello\n\n")                           # -> "hello"
+```
+
+**Collection**
+
+```hcl
+alltrue([true, "true"])  anytrue([true, false])     # -> true  true   (alltrue([]) is true, anytrue([]) is false)
+chunklist(["a","b","c","d","e"], 2)                 # -> [["a","b"], ["c","d"], ["e"]]
+coalesce("", "b")                                   # -> "b"          (first non-null, non-empty)
+coalescelist([], ["c", "d"])                        # -> ["c", "d"]   (first non-empty list)
+compact(["a", "", "b"])                             # -> ["a", "b"]   (drops empty strings)
+concat(["a"], ["b", "c"])                           # -> ["a", "b", "c"]
+contains(["a", "b"], "a")                           # -> true
+distinct(["a", "b", "a"])                           # -> ["a", "b"]
+element(["a", "b", "c"], 3)                         # -> "a"          (index wraps around)
+index(["a", "b", "c"], "b")                         # -> 1            (position of a value)
+flatten([["a", "b"], [], ["c"]])                    # -> ["a", "b", "c"]
+keys({ a = 1, c = 2 })  values({ a = 3, c = 2 })    # -> ["a", "c"]   [3, 2]
+length("hello")                                     # -> 5            (list, map or string)
+lookup({ a = "ay" }, "c", "what?")                  # -> "what?"      (default when key missing)
+matchkeys(["i-123","i-abc","i-def"], ["us-west","us-east","us-east"], ["us-east"])   # -> ["i-abc", "i-def"]
+merge({ a = "b", c = "d" }, { e = "f", c = "z" })   # -> { a = "b", c = "z", e = "f" } (later wins)
+one([])  one(["hello"])                             # -> null  "hello"  (two or more elements is an error)
+range(3)  range(1, 10, 3)                           # -> [0, 1, 2]  [1, 4, 7]   (start, limit, step)
+reverse([1, 2, 3])                                  # -> [3, 2, 1]
+setintersection(["a","b"], ["b","c"])               # -> ["b"]
+setunion(["a","b"], ["b","c"], ["d"])               # -> ["a","b","c","d"]
+setsubtract(["a","b","c"], ["a","c"])               # -> ["b"]
+setproduct(["dev","stg"], ["app1","app2"])          # -> every pairing: [["dev","app1"], ["dev","app2"], ...]
+slice(["a","b","c","d"], 1, 3)                      # -> ["b", "c"]   (start inclusive, end exclusive)
+sort(["e", "d", "a"])                               # -> ["a", "d", "e"]
+sum([10, 13, 6, 4.5])                               # -> 33.5
+transpose({ a = ["1","2"], b = ["2","3"] })         # -> { "1" = ["a"], "2" = ["a","b"], "3" = ["b"] }
+zipmap(["a", "b"], [1, 2])                          # -> { a = 1, b = 2 }
+```
+
+Easy to mix up: `coalesce` is for single values, `coalescelist` for lists; `compact` only removes empty **strings**; `contains` works on a list or set, `lookup` on a map; the function is `reverse` (not `reserve`).
+
 ## Versions
 
 Read a version by **position**: first digit = **major**, second = **minor**, third = **patch** (`3.9.1`). Spec: <https://semver.org>
@@ -201,6 +273,10 @@ env `TF_VAR_*` < `terraform.tfvars` < `terraform.tfvars.json` < `*.auto.tfvars[.
 
 - `apply FILE` (saved plan) skips the approval prompt; `taint` and `refresh` are deprecated for `-replace` and `-refresh-only`
 - `state rm` forgets a resource without destroying it; renaming a resource without `state mv` / `moved` destroys and recreates it
+- `terraform_remote_state` only exposes root-level outputs, and needs read access to the whole state
+- `backend "remote"` with both `name` and `prefix` fails at `init`; use the `cloud` block for HCP Terraform
+- `TF_LOG` (or `TF_LOG_CORE` / `TF_LOG_PROVIDER`) plus `TF_LOG_PATH` for logs; a Go panic writes `crash.log`
+- `force-unlock` only for your own stuck lock, never someone else's active one
 - `.terraform.lock.hcl` = provider dependency lock; `.terraform.tfstate.lock.info` = state lock while a run is active
 - `sensitive = true` hides values in the CLI only; they stay in the state file in plain text
 - `for_each` needs a map or set: wrap lists in `toset()`
