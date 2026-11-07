@@ -44,6 +44,13 @@ module "local" { source = "./modules/app" }   # local path (no version argument)
 - The module lives in a **public GitHub repo** named `terraform-<PROVIDER>-<NAME>` (e.g. `terraform-aws-vpc`)
 - Connect the repo to the registry once, then release by pushing a **version tag** (`v1.2.0`); the registry builds docs, examples, README and version history from the repo
 
+### Publishing to a private registry (worked example)
+
+- Same repo naming rule and tag-based versions, but the repo can be private and the module is shared only inside your HCP Terraform organisation
+- Worked example: <https://github.com/sharifndlovu123/terraform-aws-demo-bucket> published as `app.terraform.io/devbridge-playground/demo-bucket/aws`
+- Consumer example: [`examples/08-hcp-terraform/registry-consumer`](../examples/08-hcp-terraform/registry-consumer)
+- Registry name and provider are read from the repo name: `terraform-aws-demo-bucket` -> name `demo-bucket`, provider `aws`
+
 ## Standard module structure
 
 ```text

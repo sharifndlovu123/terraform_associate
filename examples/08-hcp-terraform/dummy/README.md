@@ -46,7 +46,8 @@ The demo module lives in its **own repo, outside this study repo**:
 The HCP Terraform private registry publishes a module from a VCS repo (one module per repo, files at
 the repo root, repo named `terraform-<PROVIDER>-<NAME>`), which is why it is split out.
 
-- Still to do when you want it in the registry: create the GitHub repo `terraform-aws-demo-bucket`,
-  add it as `origin`, push, tag `v1.0.0`, then Registry -> Publish -> Module in HCP Terraform.
+- GitHub (private): <https://github.com/sharifndlovu123/terraform-aws-demo-bucket>, tagged `v1.0.0`.
+  Published to the `devbridge-playground` private registry as `demo-bucket` / `aws`.
+- To consume it, see `../registry-consumer/` (written but deliberately not run).
 - The registry docs (inputs, outputs, readme) are generated from the module's `README.md`,
   `variables.tf` and `outputs.tf`, so the descriptions there are what you will see.

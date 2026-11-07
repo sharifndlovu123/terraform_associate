@@ -321,6 +321,16 @@ Read a version by **position**: first digit = **major**, second = **minor**, thi
 - Progressive versioning: stay current in small steps and run a nightly `plan`/build as the early warning (see `07-versions/nightly-check.sh`)
 - Hands-on version in [`examples/07-versions`](examples/07-versions)
 
+## Private registry modules
+
+- Repo name must be `terraform-<PROVIDER>-<NAME>` (`terraform-aws-demo-bucket`); one module per repo, files at the repo root
+- Versions come from **semver git tags** (`v1.0.0`); publish via HCP Terraform -> Registry -> Publish -> Module (needs a connected VCS provider)
+- Source address: `<HOSTNAME>/<ORG>/<NAME>/<PROVIDER>` -> `app.terraform.io/devbridge-playground/demo-bucket/aws`; consumers need `terraform login`
+- Only registry sources accept `version`; a local path (`../..`) or a plain Git URL ignores/cannot use it
+- Registry docs are generated from `README.md`, variable and output `description`s
+- Modules pin providers with `>=`; the root module chooses the exact version
+- Hands-on: [`examples/08-hcp-terraform/registry-consumer`](examples/08-hcp-terraform/registry-consumer), module repo <https://github.com/sharifndlovu123/terraform-aws-demo-bucket>
+
 ## Variable precedence (later wins)
 
 env `TF_VAR_*` < `terraform.tfvars` < `terraform.tfvars.json` < `*.auto.tfvars[.json]` < `-var` / `-var-file`

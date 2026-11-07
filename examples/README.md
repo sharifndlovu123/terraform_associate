@@ -20,7 +20,7 @@ terraform destroy
 | [`04-provisioners/remote`](04-provisioners/remote) | `connection`, `file`, `remote-exec` (needs an SSH host to apply, validates without one) |
 | [`05-modules-and-provider-alias`](05-modules-and-provider-alias) | local module, provider `alias`, passing `providers` to a module |
 | [`09-backends-and-remote-state`](09-backends-and-remote-state) | `backend "local"` with a custom path, `terraform_remote_state` reading another stack's output, partial backend config (`-backend-config=FILE`), `optional()` object attributes |
-| [`08-hcp-terraform`](08-hcp-terraform) | the `cloud` block that points a config at HCP Terraform (validates offline, `init` needs a real organisation) |
+| [`08-hcp-terraform`](08-hcp-terraform) | the `cloud` block that points a config at HCP Terraform (validates offline, `init` needs a real organisation); `dummy/` is an S3 bucket test with state in HCP Terraform; `registry-consumer/` calls a module from the private registry (needs `terraform login`, not run) |
 | [`07-versions`](07-versions) | semantic versioning (major.minor.patch), `~>` and other constraint operators, `required_version`, the `.terraform.lock.hcl` file, common version errors, a nightly canary script that finds breaking releases overnight |
 | [`06-dynamic-blocks/aws-network`](06-dynamic-blocks/aws-network) | AWS VPC, public subnets, internet gateway and default route, security group whose `ingress` rules come from a `dynamic` block (config in `locals`, no variables) |
 | [`06-dynamic-blocks`](06-dynamic-blocks) | `dynamic` blocks: iterate a map, custom `iterator`, a set (key = value), optional block via `[1]` / `[]` |

@@ -111,6 +111,13 @@ Checked against the official docs on 2026-11-04. Plans and limits change, so con
 | Audit logging | no | no | no | yes |
 | Concurrent runs | 1 | 3 | 10 | 200 |
 
+## Private registry
+
+- Publish: Registry -> Publish -> Module, pick a connected VCS provider and a repo named `terraform-<PROVIDER>-<NAME>`; versions are semver tags
+- Source address: `app.terraform.io/<ORG>/<NAME>/<PROVIDER>`; consumers run `terraform login` first
+- Docs on the module page are generated from `README.md` and the `description` of each variable and output
+- Walkthrough: [Modules note](04-modules.md#publishing-to-a-private-registry-worked-example)
+
 ## Gotchas
 
 - Workspaces here are **not** the same as CLI workspaces: an HCP Terraform workspace is mandatory and holds everything for one set of infrastructure; a CLI workspace is optional and only gives you extra state files in one directory
