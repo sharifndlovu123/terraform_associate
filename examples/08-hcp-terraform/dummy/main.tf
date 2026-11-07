@@ -15,10 +15,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
   }
 }
 
@@ -26,14 +22,13 @@ provider "aws" {
   region = "eu-west-1"
 }
 
-# S3 bucket names are globally unique, so add a random suffix.
-resource "random_id" "suffix" {
-  byte_length = 4
-}
+# The bucket now comes from the demo module in the HCP Terraform private registry
+# (repo: terraform-aws-demo-bucket). The module adds the random suffix itself.
+module "bucket" {
+  source  = "app.terraform.io/devbridge-playground/demo-bucket/aws"
+  version = "~> 1.0"
 
-resource "aws_s3_bucket" "test" {
-  bucket        = "tf-assoc-test-${random_id.suffix.hex}"
-  force_destroy = true # lets `terraform destroy` delete it even if it has objects
+  name_prefix = "tf-assoc-test"
 
   tags = {
     Purpose = "terraform-associate-practice"
@@ -41,5 +36,5 @@ resource "aws_s3_bucket" "test" {
 }
 
 output "bucket_name" {
-  value = aws_s3_bucket.test.bucket
+  value = module.bucket.bucket_name
 }

@@ -1,6 +1,6 @@
 # HCP Terraform dummy: S3 bucket test
 
-Tiny test config: one S3 bucket, with state stored in HCP Terraform via the `cloud` block
+Tiny test config: one S3 bucket (created by the `demo-bucket` module from the private registry), with state stored in HCP Terraform via the `cloud` block
 (org `devbridge-playground`, workspace `default-workstation`).
 
 ## Reminder: remote execution needs its own credentials
@@ -36,7 +36,9 @@ As of 2026-11-07 the workspace has **no state file**. That is expected:
 
 ## Cleanup
 
-`terraform destroy` removes the bucket (`force_destroy = true` is set).
+`terraform destroy` removes the bucket (the module defaults `force_destroy = true`).
+
+Because the config now uses a registry module, `terraform init` also downloads `devbridge-playground/demo-bucket/aws` 1.x; the workspace needs `terraform login` locally, and remote runs fetch it with the org's own access.
 
 ## Private registry demo module (separate repo)
 
