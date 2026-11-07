@@ -247,6 +247,66 @@ transpose({ a = ["1","2"], b = ["2","3"] })         # -> { "1" = ["a"], "2" = ["
 zipmap(["a", "b"], [1, 2])                          # -> { a = 1, b = 2 }
 ```
 
+**Type conversion**
+
+```hcl
+tonumber("42")  tostring(12)  tobool("true")        # -> 42  "12"  true
+toset(["b", "a", "b"])                              # -> toset(["a", "b"])  (dedupes, drops order)
+tolist(["a", "b"])  tomap({ a = "x" })              # -> list / map types
+try(tonumber("abc"), 0)                             # -> 0            (first expression that doesn't error)
+can(tonumber("abc"))                                # -> false        (true/false: does it evaluate?)
+type(["a"])                                         # -> tuple([string])   (console only)
+sensitive("x")  nonsensitive(sensitive("x"))        # -> mark a value sensitive / unmark it
+```
+
+**Encoding**
+
+```hcl
+jsonencode({ a = 1, b = ["x"] })                    # -> "{\"a\":1,\"b\":[\"x\"]}"
+jsondecode("{\"a\":1}")                             # -> { a = 1 }
+yamlencode({ a = 1 })  yamldecode("a: 1")           # -> "\"a\": 1\n"   { a = 1 }
+base64encode("hi")  base64decode("aGk=")            # -> "aGk="  "hi"
+urlencode("a b&c")                                  # -> "a+b%26c"
+```
+
+**Filesystem**
+
+```hcl
+file("greeting.txt")                                # -> file contents as a string (error if missing)
+fileexists("nope.txt")                              # -> false
+fileset(path.module, "*.txt")                       # -> toset(["greeting.txt"])   (set of matching paths)
+templatefile("greeting.txt", { name = "Ann" })      # -> file rendered with ${name} filled in
+basename("/a/b/c.txt")  dirname("/a/b/c.txt")       # -> "c.txt"  "/a/b"
+```
+
+**Date and time**
+
+```hcl
+timestamp()                                         # -> current UTC time, changes on every plan
+formatdate("YYYY-MM-DD", "2026-11-07T10:00:00Z")    # -> "2026-11-07"
+timeadd("2026-11-07T10:00:00Z", "24h")              # -> "2026-11-08T10:00:00Z"
+timecmp("2026-11-07T10:00:00Z", "2026-11-08T10:00:00Z")   # -> -1   (-1 earlier, 0 equal, 1 later)
+```
+
+**Hash and crypto**
+
+```hcl
+md5("hi")                                           # -> "49f68a5c8493ec2c0bf489821c21fc3b"
+sha256("hi")                                        # -> hex digest (also sha1, sha512)
+base64sha256("hi")                                  # -> "j0NDRmSPa5bfid2pAcUXaxCm2Dlh3TwayItZstwyeqQ="
+filemd5("greeting.txt")  filesha256("greeting.txt") # -> hash of a file's contents
+uuid()  bcrypt("hi")                                # -> random each call (so the plan changes every time)
+```
+
+**IP network**
+
+```hcl
+cidrsubnet("10.0.0.0/16", 8, 2)                     # -> "10.0.2.0/24"   (prefix, newbits, netnum)
+cidrsubnets("10.0.0.0/16", 8, 8)                    # -> ["10.0.0.0/24", "10.0.1.0/24"]
+cidrhost("10.0.0.0/24", 5)                          # -> "10.0.0.5"
+cidrnetmask("10.0.0.0/16")                          # -> "255.255.0.0"
+```
+
 Easy to mix up: `coalesce` is for single values, `coalescelist` for lists; `compact` only removes empty **strings**; `contains` works on a list or set, `lookup` on a map; the function is `reverse` (not `reserve`).
 
 ## Versions
