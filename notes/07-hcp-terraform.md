@@ -129,3 +129,105 @@ Checked against the official docs on 2026-11-04. Plans and limits change, so con
 - In a CLI-driven remote run, an archive of your configuration directory is uploaded to HCP Terraform. List paths to leave out in a `.terraformignore` at the **root** of the config (gitignore-style syntax)
 - Without one, the archive skips `.git/` and `.terraform/` (but keeps `.terraform/modules`)
 - Only the root file is read; `.terraformignore` files in subdirectories are ignored
+
+## Terms
+
+| Term | Meaning |
+|------|---------|
+| Organization | a collection of workspaces |
+| Workspace | belongs to an organization; one unique environment or stack (config, variables, state, runs) |
+| Team | several users, assigned to workspaces |
+| Run | one execution of Terraform in the run environment on an execution plan; can be started from the UI/VCS, the API or the CLI |
+
+Other features the course lists: previous runs and state versions kept, secure variable injection, tags, **run triggers** (chain workspaces), a Terraform version chosen per workspace, state sharing across the organisation, comments on runs, notifications (webhooks, email, Slack), permissions at organisation and workspace level, Sentinel policy sets, MFA, SSO, cost estimation, integrations (ServiceNow, Splunk, Kubernetes) and custom run tasks.
+
+## Workspaces and runs
+
+- Each workspace page has Overview, Runs, States, Variables and Settings tabs
+- **Runs**: a history of runs; open one for the plan log, the apply log and confirmations, and leave a **comment** on any run. A plan can be a `destroy` run, and a plan can be **discarded**
+- **States**: every state snapshot is kept, with a diff against the previous one and a **Download** button for the state file
+- Plan view offers **Download Sentinel mocks** (test data for writing Sentinel policies)
+- **Workflow options** per workspace: the Terraform version to use (any release), **share state globally** with other workspaces in the organisation, and the apply method (**auto apply** skips the manual confirmation, **manual apply** waits for a person)
+
+## Run workflows (picked when you create a workspace)
+
+| Workflow | How runs start |
+|----------|----------------|
+| Version control (UI/VCS, most common) | linked to one branch via webhooks: a pull request gets a speculative plan, a merge to that branch triggers a run |
+| CLI-driven | you run `terraform plan` / `apply` locally and the run executes remotely |
+| API-driven | a pipeline uploads a **configuration version** (a `.tar.gz` archive of the config) through the API and triggers a run |
+
+VCS providers: GitHub (including OAuth, Enterprise and custom), GitLab (EE and CE), Bitbucket (Cloud, Server, Data Center) and Azure DevOps (Service, Server). The Terraform version, VCS connection and apply method are all set per workspace.
+
+## Run environment
+
+- Remote runs execute in a **single-use Linux x86_64 virtual machine or container** managed by HCP Terraform (its internals are not documented)
+- These variables are injected into every run:
+
+| Variable | Value |
+|----------|-------|
+| `TFC_RUN_ID` | unique run ID, e.g. `run-CKuwsxMGgMd3W7Ui` |
+| `TFC_WORKSPACE_NAME` | workspace name |
+| `TFC_WORKSPACE_SLUG` | `org/workspace`, e.g. `acme-corp/prod-load-balancers` |
+| `TFC_CONFIGURATION_VERSION_GIT_BRANCH` | branch used, e.g. `main` |
+| `TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA` | full commit hash |
+| `TFC_CONFIGURATION_VERSION_GIT_TAG` | tag used, e.g. `1.1.0` |
+
+```hcl
+variable "TFC_RUN_ID" {}      # declare a variable with that name to read it in config
+```
+
+## Permissions
+
+**Organization level** (manage things across the whole organisation)
+
+- Manage policies (Sentinel), manage policy overrides (override soft-mandatory checks), manage workspaces, manage VCS settings
+- **Organization owners** hold every permission, plus owner-only actions: publish private modules, invite users, manage team membership, view all secret teams, manage organisation permissions, settings and billing, manage agents, delete the organisation
+
+**Workspace level**
+
+| Fixed set | Includes |
+|-----------|----------|
+| Read | read runs, variables, state versions |
+| Plan | read, plus queue plans |
+| Write | plan, plus apply runs, lock/unlock workspace, download Sentinel mocks, read and write variables and state versions |
+| Workspace admin | everything, plus workspace settings, set or remove team permissions, delete the workspace |
+
+Custom workspace permissions let you grant individual abilities instead (read runs, queue plans, apply runs, lock/unlock, read/write variables, read state outputs, read/write state versions).
+
+## API tokens
+
+| Token | Scope and rules |
+|-------|-----------------|
+| Organization | whole organisation; one valid token at a time; only owners can create or revoke it; meant for creating and configuring workspaces and teams, not as an all-purpose key |
+| Team | the workspaces that team can access, not tied to a person; one valid token per team; any team member can regenerate it, which immediately invalidates the old one |
+| User | most flexible: inherits that user's permissions; can belong to a person or a machine user |
+
+- `terraform login` obtains a **user** token. A **team** token has to be put into the CLI configuration file by hand
+- Private registry access works with either a user or a team token (their permissions differ)
+- A private registry is visible to every user in the organisation and offers module versioning, a searchable list and a configuration designer
+
+## Cost estimation
+
+- Shows the monthly cost of the resources in a run next to the plan: hourly cost, monthly cost and monthly delta per resource
+- Only for certain resource types on AWS, Azure and GCP (for example `aws_instance`, `aws_db_instance`, `aws_ebs_volume`, `aws_lb`, `azurerm_virtual_machine`, `azurerm_managed_disk`, `google_compute_instance`, `google_sql_database_instance`)
+- Pair it with a Sentinel policy to fail runs that would cost too much
+
+## Agents
+
+- Let HCP Terraform manage **isolated, private or on-premises** infrastructure (vSphere, Nutanix, OpenStack...)
+- **Pull-based**: the agent polls HCP Terraform for work and runs it locally, so no inbound connectivity is needed
+- Course-era requirements: x86_64 Linux (or the official agent Docker image), Terraform 0.12+, at least 4 GB free disk and 2 GB memory, outbound HTTPS (443) to `app.terraform.io`, `registry.terraform.io`, `releases.hashicorp.com` and `archivist.terraform.io`
+
+## Terraform Enterprise
+
+- The **self-hosted** distribution of the platform: a private instance with no resource limits plus enterprise features such as audit logging and SAML SSO
+- You provide: a Linux instance, a TLS certificate and private key, a Terraform Enterprise **licence** from HashiCorp, and storage
+- Operational modes (where data is kept): **External services** (PostgreSQL plus object storage such as S3, GCS, Azure Blob or Minio), **Mounted disk** (a separate disk, e.g. EBS or iSCSI), **Demo** (everything on the instance, not for production)
+- Course-era sizing: at least 4 CPU cores, 8 GB memory, 10 GB root disk and 40 GB for the Docker data directory. Supported OS lists change by release, check the docs
+- **Air-gapped** installs (no internet, common in government, military, finance and energy) are supported: you install or update from an **air gap bundle**, an archive of a release version
+
+## Course-era plan names
+
+The course (2021) describes: **Free** (up to 5 users, 1 concurrent run), **Teams & Governance** (from about $20 per user per month, 2 concurrent runs, adds team management, Sentinel policy management and cost estimation), **Business** (adds SSO, audit logging, self-hosted agents, configuration designer, ServiceNow integration, unlimited concurrent runs) and **Enterprise** (self-hosted, private). Current names and limits are in the plans table above.
+

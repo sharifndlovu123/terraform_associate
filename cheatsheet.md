@@ -17,6 +17,7 @@
 | `terraform show` | Inspect state or a saved plan |
 | `terraform output [name]` | Print output values (`-json`, `-raw` for a single string) |
 | `terraform apply -var 'k=v'` / `-var-file=f.tfvars` | Set variables from the CLI |
+| `terraform workspace list` / `new NAME` / `select NAME` / `show` / `delete NAME` | Manage CLI workspaces (separate state per name) |
 | `terraform state list` | List resources in state |
 | `terraform state show ADDR` / `mv` / `rm` / `pull` / `push` / `replace-provider` | Inspect, rename/move, forget, download, upload, switch provider |
 
@@ -306,6 +307,84 @@ cidrsubnets("10.0.0.0/16", 8, 8)                    # -> ["10.0.0.0/24", "10.0.1
 cidrhost("10.0.0.0/24", 5)                          # -> "10.0.0.5"
 cidrnetmask("10.0.0.0/16")                          # -> "255.255.0.0"
 ```
+
+**Filesystem** (paths in a config are relative to where you run Terraform, so prefer `path.module`)
+
+```hcl
+abspath(path.root)                                  # -> absolute path of the root module directory
+dirname("foo/bar/baz.txt")                          # -> "foo/bar"
+basename("foo/bar/baz.txt")                         # -> "baz.txt"
+pathexpand("~/.ssh/id_rsa")                         # -> "/home/<you>/.ssh/id_rsa"  (a path without ~ comes back unchanged)
+file("${path.module}/hello.txt")                    # -> "Hello World"  (contents as a string)
+fileexists("${path.module}/hello.txt")              # -> true
+fileset(path.module, "files/*.txt")                 # -> ["files/hello.txt", "files/world.txt"]  (a set of matching names)
+filebase64("${path.module}/hello.txt")              # -> "SGVsbG8gV29ybGQ="
+templatefile("${path.module}/backends.tpl", { port = 8080, ip_addrs = ["10.0.0.1", "10.0.0.2"] })
+```
+
+`backends.tpl` (uses the same `${ }` and `%{ }` syntax as strings):
+
+```text
+%{ for addr in ip_addrs ~}
+backend ${addr}:${port}
+%{ endfor ~}
+```
+
+Renders as `backend 10.0.0.1:8080` and `backend 10.0.0.2:8080` on separate lines.
+
+**Date and time**
+
+```hcl
+formatdate("DD MMM YYYY hh:mm ZZZ", "2018-01-02T23:12:01Z")         # -> "02 Jan 2018 23:12 UTC"
+formatdate("EEEE, DD-MMM-YY hh:mm:ss ZZZ", "2018-01-02T23:12:01Z")  # -> "Tuesday, 02-Jan-18 23:12:01 UTC"
+formatdate("MMM DD, YYYY", "2018-01-02T23:12:01Z")                  # -> "Jan 02, 2018"
+formatdate("HH:mmaa", "2018-01-02T23:12:01Z")                       # -> "11:12pm"
+timeadd("2017-11-22T00:00:00Z", "10m")                              # -> "2017-11-22T00:10:00Z"  (duration: 10m, 2h, 30s)
+timestamp()                                                         # -> current UTC time in RFC 3339, changes every call
+```
+
+**Hash and crypto**
+
+```hcl
+sha256("hello")   md5("hello")   sha1("hello")   sha512("hello")   # hex digests (md5 and sha1 are weak, avoid for security)
+base64sha256("hello")                                              # -> "LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ="
+filesha256("${path.module}/hello.txt")                             # hash of a file; also filemd5, filesha1, filesha512, filebase64sha256, filebase64sha512
+bcrypt("hello world")                                              # -> "$2a$10$..." (60 chars, random salt: differs every call)
+uuid()                                                             # random UUID, differs every call
+uuidv5("dns", "example.com")                                       # -> same UUID every time for the same namespace and name
+```
+
+Also in this family: `base64sha512`, `filebase64sha512`, `rsadecrypt`.
+
+**IP network**
+
+```hcl
+cidrhost("10.12.127.0/20", 16)             # -> "10.12.112.16"   (host number inside the prefix; 268 -> "10.12.113.12")
+cidrnetmask("172.16.0.0/12")               # -> "255.240.0.0"
+cidrsubnet("172.16.0.0/12", 4, 2)          # -> "172.18.0.0/16"  (prefix, newbits, netnum, see the console section)
+cidrsubnet("10.1.2.0/24", 4, 15)           # -> "10.1.2.240/28"
+cidrsubnets("10.1.0.0/16", 4, 4, 8, 4)     # -> ["10.1.0.0/20", "10.1.16.0/20", "10.1.32.0/24", "10.1.48.0/20"]
+```
+
+`cidrsubnets(prefix, newbits...)` returns consecutive, non-overlapping ranges: one per `newbits` argument, each sized by its own value.
+
+**Type conversion**
+
+```hcl
+tobool("true")  tonumber("1")  tostring(true)    # -> true  1  "true"
+tolist(["a", "b", 3])                            # -> ["a", "b", "3"]   (mixed values are converted to one type)
+tomap({ a = 1, b = 2 })  toset(["a", "b", "c"])
+can(local.foo.bar)                               # -> true/false: did the expression evaluate without error?
+can(tonumber("abc"))                             # -> false
+try(local.foo.baz, "fallback")                   # -> "fallback"  (first argument that does not error)
+try(tonumber("abc"), 0)                          # -> 0
+sensitive(file("${path.module}/hello.txt"))      # mark a value sensitive: shown as (sensitive value)
+nonsensitive(sha256(var.password))               # remove the mark (use only when the result is safe, e.g. a hash)
+defaults(...)                                    # old helper for optional() attributes, now removed: use optional(type, default)
+```
+
+- `can` and `try` catch evaluation errors such as a missing attribute or a failed conversion. They do not rescue a reference to a name that is not declared at all (that fails earlier)
+- A sensitive value that flows into an output must be flagged: `output "x" { value = ..., sensitive = true }`, otherwise Terraform refuses with "Output refers to sensitive values"
 
 Easy to mix up: `coalesce` is for single values, `coalescelist` for lists; `compact` only removes empty **strings**; `contains` works on a list or set, `lookup` on a map; the function is `reverse` (not `reserve`).
 

@@ -184,6 +184,47 @@ resource "aws_route53_record" "example" {
 }
 ```
 
+## Workspaces (CLI)
+
+Several named states for one configuration (dev, prod, ...). Think of them like git branches for state: technically each is just another state file. (Before 0.9 they were called "environments".)
+
+```bash
+terraform workspace list          # * marks the current one; a fresh project only has `default`
+terraform workspace new dev       # create and switch
+terraform workspace select dev    # switch (`-or-create` makes it if missing)
+terraform workspace show          # print the current name
+terraform workspace delete dev    # cannot delete the one you are on, or `default`
+```
+
+```hcl
+count = terraform.workspace == "default" ? 5 : 1   # use the workspace name in config
+tags  = { Name = "web-${terraform.workspace}" }
+```
+
+- Local backend: states live in `terraform.tfstate.d/<name>/`; `default` stays in `terraform.tfstate`. Small teams sometimes commit them, but a remote backend is better with several collaborators
+- Remote backend: the workspace states are stored in the backend itself
+- Backends that support multiple workspaces: `local`, `remote`, `s3`, `gcs`, `azurerm`, `consul`, `kubernetes`, `pg`, `cos`, `manta`. One configuration still has one backend, you just get several states without changing credentials
+- Not the same thing as HCP Terraform workspaces, which behave like completely separate working directories (see [07](07-hcp-terraform.md#workspaces-and-runs))
+
+## Moving local state to HCP Terraform
+
+```hcl
+terraform {                      # before: nothing, default local state
+}
+
+terraform {                      # after
+  backend "remote" {
+    hostname     = "app.terraform.io"
+    organization = "my-org"
+    workspaces {
+      name = "my-workspace"
+    }
+  }
+}
+```
+
+Create the workspace in HCP Terraform, change the config, then `terraform init` (add `-migrate-state` to be explicit). Answer `yes` when asked to copy the existing state; `no` starts with an empty state. New configs should use the `cloud` block instead of `backend "remote"`.
+
 ## State locking
 
 - Locking happens automatically on every operation that could write state, with no message unless acquiring the lock is slow
