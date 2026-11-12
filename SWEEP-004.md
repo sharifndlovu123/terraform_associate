@@ -33,3 +33,6 @@ The course is the **003** exam. When the sweep is requested: check the current o
 - [ ] `examples/08-hcp-terraform/sentinel`: Sentinel policy passes `sentinel test` (CLI 0.41.0) on hand-written mocks; still run it in a real policy set with real plan data. Also check whether 004 expects OPA alongside Sentinel
 - [ ] Sentinel CLI licence terms are not stated in the CLI docs: confirm them, and confirm which plans include policy enforcement today
 - [ ] Enforcement levels: the newer "Terraform policy" language (Advisory / Mandatory overridable / Mandatory) is from the docs only; check whether 004 covers it and try it
+- [ ] `examples/10-packer`: Packer validated with 1.16.2 and the amazon plugin 1.8.4 only; the course slide template had no `required_plugins` block (added). `packer build` never run. Check the Packer coverage in 004 and the version pinned in `required_plugins`
+- [ ] `examples/08-hcp-terraform/sentinel`: `tfplan-functions` helper module comes from HashiCorp's `terraform-sentinel-policies` repo (downloaded, not vendored); confirm the URL and how an HCP policy set should reference it (`module` block source)
+- [ ] Course slides call the platform "Terraform Cloud" and sell Sentinel with Team & Governance: recheck names and plan tiers

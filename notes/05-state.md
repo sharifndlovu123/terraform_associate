@@ -190,6 +190,7 @@ Several named states for one configuration (dev, prod, ...). Think of them like 
 
 ```bash
 terraform workspace list          # * marks the current one; a fresh project only has `default`
+                                  #   default / * development / production
 terraform workspace new dev       # create and switch
 terraform workspace select dev    # switch (`-or-create` makes it if missing)
 terraform workspace show          # print the current name

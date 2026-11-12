@@ -130,6 +130,47 @@ Checked against the official docs on 2026-11-04. Plans and limits change, so con
 - Without one, the archive skips `.git/` and `.terraform/` (but keeps `.terraform/modules`)
 - Only the root file is read; `.terraformignore` files in subdirectories are ignored
 
+## Sentinel and policy as code
+
+**Policy as code** = governance rules written as code and enforced automatically. **Sentinel** is HashiCorp's policy-as-code framework, embedded in the Terraform platform (and other HashiCorp products). It is its own language, not HCL.
+
+| Sentinel feature | Meaning |
+|------------------|---------|
+| Embedded | checks sit in the data path and actively reject violating changes instead of just reporting them |
+| Fine-grained, condition-based | decisions can depend on the values of other things |
+| Multiple enforcement levels | advisory, soft-mandatory, hard-mandatory (below) |
+| External information | policies can pull in outside data to decide |
+| Multi-cloud | the same rules can govern several providers |
+
+Benefits the course lists for policy as code: **sandboxing** (guardrails instead of manual checks), **codification** (the policy is exactly what is enforced), **version control** (history of changes), **testing** (syntax and behaviour validated with the CLI, see the example), **automation** (integrates with other systems to notify or remediate).
+
+Course-era note: Sentinel was sold as part of the Team & Governance upgrade (see the plans below).
+
+Policies people commonly write:
+
+| Area | Examples |
+|------|----------|
+| AWS | restrict `aws_ami` owners, mandatory tags, allowed availability zones and instance types, no `0.0.0.0/0` in security groups, S3 private and KMS-encrypted, VPC DNS hostnames on |
+| Azure | mandatory VM tags, allowed VM publishers, images and sizes, AKS limits, security-group CIDRs |
+| GCP | mandatory labels, no `0.0.0.0/0` in firewalls, GKE limits, allowed machine types |
+| VMware | Storage DRS, virtual disk size and type, CPU and memory limits, NFS 4.1 + Kerberos |
+| Cloud-agnostic | allowed or prohibited providers, monthly cost limit, no providers in non-root modules, version constraints on all modules, resources only from the private registry, latest module versions |
+
+Flow: SCM -> HCP Terraform -> `plan` -> **Sentinel policies** -> `apply` -> new infrastructure. You create a **policy set** in the organisation and attach it to workspaces.
+
+Shape of a policy using the shared helper module (course slide, runnable version in the example):
+
+```text
+import "tfplan-functions" as plan
+
+allowed_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+all_ec2_instances = plan.find_resources("aws_instance")
+violating_ec2_instances = plan.filter_attribute_not_in_list(all_ec2_instances,
+	"availability_zone", allowed_zones, true)
+
+main = rule { length(violating_ec2_instances["messages"]) is 0 }
+```
+
 ## Policy sets (Sentinel)
 
 A **policy set** is a group of policies applied to chosen workspaces. Policies are checked after the plan, before apply. Runnable-style example: [`examples/08-hcp-terraform/sentinel`](../examples/08-hcp-terraform/sentinel).
@@ -147,6 +188,18 @@ policy "restrict-ec2" {
 import "tfplan/v2" as tfplan
 main = rule { all ec2_instances as _, rc { rc.change.after.instance_type in allowed_types } }
 ```
+
+### Where the policies live
+
+| Source | Notes |
+|--------|-------|
+| VCS repo (the usual way) | the policy set links to a repo and branch; policy changes arrive through pull requests |
+| API or CLI upload | a pipeline packages and pushes the policies; the `tfe` provider can manage policy sets too |
+| Entered in the UI | pasted by hand: fine for experiments, no history or review |
+
+- A **separate** policy repo is the recommended pattern, not a rule: the platform or security team owns the guardrails, one policy set covers many workspaces, and policy changes get their own review and rollback
+- Keeping policies beside the config is fine for a solo or learning project (the example folder does this for convenience)
+- Written from memory of the docs, not tried here
 
 ### Enforcement levels
 
@@ -213,6 +266,18 @@ The official CLI docs say nothing about licence terms, so check HashiCorp's term
 Other features the course lists: previous runs and state versions kept, secure variable injection, tags, **run triggers** (chain workspaces), a Terraform version chosen per workspace, state sharing across the organisation, comments on runs, notifications (webhooks, email, Slack), permissions at organisation and workspace level, Sentinel policy sets, MFA, SSO, cost estimation, integrations (ServiceNow, Splunk, Kubernetes) and custom run tasks.
 
 ## Workspaces and runs
+
+**Local directory vs HCP Terraform workspace**: the same job, but the data lives in different places.
+
+| Component | Local Terraform | HCP Terraform |
+|-----------|-----------------|---------------|
+| Configuration | on disk | in the linked VCS repo, or uploaded via API/CLI |
+| Variable values | `.tfvars` files, CLI arguments, shell environment | in the workspace |
+| State | on disk or in a remote backend | in the workspace |
+| Credentials and secrets | shell environment or prompts | in the workspace, stored as sensitive variables |
+
+**Run triggers**: connect a workspace to one or more **source workspaces** in the same organisation. A successful apply in a source workspace queues a run automatically in yours; each workspace can have up to 20 sources. Use it when a workspace relies on infrastructure or values produced by another (for example it reads them with data sources). Set it under **Settings > Run Triggers**; triggered runs are labelled "Queued automatically by ... from Run Trigger".
+
 
 - Each workspace page has Overview, Runs, States, Variables and Settings tabs
 - **Runs**: a history of runs; open one for the plan log, the apply log and confirmations, and leave a **comment** on any run. A plan can be a `destroy` run, and a plan can be **discarded**
