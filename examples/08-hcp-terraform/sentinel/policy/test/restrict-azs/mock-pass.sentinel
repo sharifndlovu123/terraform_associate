@@ -1,0 +1,18 @@
+resource_changes = {
+	"aws_instance.demo": {
+		"address": "aws_instance.demo",
+		"mode":    "managed",
+		"type":    "aws_instance",
+		"name":    "demo",
+		"provider_name": "registry.terraform.io/hashicorp/aws",
+		"change": {
+			"actions": ["create"],
+			"before":  null,
+			"after": {
+				"instance_type":     "t2.micro",
+				"availability_zone": "us-east-1b",
+			},
+			"after_unknown": {},
+		},
+	},
+}

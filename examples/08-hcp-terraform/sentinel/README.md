@@ -28,6 +28,21 @@ More: HashiCorp's testing tutorial https://developer.hashicorp.com/terraform/tut
 - Mocks are big: collapse the `planned_values` section in an editor to reach `resource_changes` faster
 - In the tutorial the test case points at a mock one folder up (`source = "../../mock-tfplan-pass-v2.sentinel"`); here the mocks sit beside the case files, so the source is just the file name
 
+## Using a shared function module
+
+`restrict-azs.sentinel` (from the course slide) keeps instances in approved availability zones and uses HashiCorp's `tfplan-functions` helper module: `plan.find_resources("aws_instance")` and `plan.filter_attribute_not_in_list(...)`. The module is not copied into this repo, download it next to the policy:
+
+```bash
+cd policy
+curl -O https://raw.githubusercontent.com/hashicorp/terraform-sentinel-policies/main/common-functions/tfplan-functions/tfplan-functions.sentinel
+sentinel test            # now runs restrict-ec2 and restrict-azs
+```
+
+- In `sentinel.hcl` the helper is declared with a `module "tfplan-functions" { source = ... }` block (this is what HCP Terraform reads)
+- The local CLI instead reads it from each test case: `import "module" "tfplan-functions" { source = "../../tfplan-functions.sentinel" }`, path relative to the test file (see `test/restrict-azs/*.hcl`)
+- The `fail` case logs the reason: `aws_instance.demo has availability_zone with value eu-west-1a that is not in the allowed list: [...]`
+- Without the download, only the `restrict-azs` tests error (`Import "tfplan-functions" is not available`); `restrict-ec2` is self-contained
+
 ## Mock files: what they are
 
 A policy imports run data (`import "tfplan/v2" as tfplan`). In HCP Terraform that data comes from the real plan. Locally there is no plan, so `sentinel test` reads **mock files**: fake data with the same shape.

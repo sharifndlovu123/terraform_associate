@@ -23,3 +23,8 @@ examples/**/build/
 .vscode/
 .idea/
 .DS_Store
+
+# Downloaded by the Sentinel example (see its README) and Packer plugins
+examples/**/tfplan-functions.sentinel
+examples/**/.plugins/
+.sentinel/

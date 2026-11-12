@@ -1,0 +1,15 @@
+# EC2 instances may only use approved availability zones
+import "tfplan-functions" as plan
+
+# include null to allow missing or computed values
+allowed_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+
+all_ec2_instances = plan.find_resources("aws_instance")
+
+# the last argument (true) prints a message for every violation
+violating_ec2_instances = plan.filter_attribute_not_in_list(all_ec2_instances,
+	"availability_zone", allowed_zones, true)
+
+main = rule {
+	length(violating_ec2_instances["messages"]) is 0
+}
