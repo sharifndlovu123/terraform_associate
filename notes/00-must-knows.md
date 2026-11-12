@@ -16,6 +16,22 @@
 **HCL** is the shared config language toolkit. Used by Terraform (`.tf`), Packer (`.pkr.hcl`), Vault policies (no extension), Consul/Boundary/Waypoint (`.hcl`), Nomad (`.nomad`).
 Sentinel does **not** use HCL (its own language).
 
+## Packer in one page
+
+Packer builds a **machine image** once, before deploy: immutable infrastructure, every VM in the fleet identical, faster deploys, and package problems found at build time. It is a tool you run (by hand or on a build server), not a service.
+
+Flow: commit -> CI/CD triggers the Packer build -> provisioners (Ansible, Chef, shell...) configure it -> image stored (AWS: EC2 AMIs) -> Terraform references the image -> provisions infrastructure.
+
+Template parts (HCL, `.pkr.hcl`): `source` (where and what kind of image), `build` (which sources, plus **provisioners** that configure the machine), **post-processors** (run after the image exists: upload, repackage). Terraform references the finished image with a data source (`data "aws_ami"` with `most_recent`, `name_regex`, `owners`).
+
+```bash
+packer init .      # install plugins
+packer validate .
+packer build .
+```
+
+Runnable files: [`examples/10-packer`](../examples/10-packer).
+
 ## Terraform lifecycle
 
 `write -> init -> plan -> apply -> destroy`

@@ -400,6 +400,19 @@ Read a version by **position**: first digit = **major**, second = **minor**, thi
 - Progressive versioning: stay current in small steps and run a nightly `plan`/build as the early warning (see `07-versions/nightly-check.sh`)
 - Hands-on version in [`examples/07-versions`](examples/07-versions)
 
+## Packer and Sentinel CLIs
+
+```bash
+packer init .          # install plugins from the packer { required_plugins } block
+packer fmt .           # also: packer fmt -check .
+packer validate .
+packer build .         # creates the image (needs cloud credentials)
+
+sentinel test          # run test/<policy>/*.hcl cases against mock data
+sentinel test -verbose # rule-by-rule trace and logs
+sentinel fmt FILE      # format a policy (takes a file, not a directory)
+```
+
 ## Private registry modules
 
 - Repo name must be `terraform-<PROVIDER>-<NAME>` (`terraform-aws-demo-bucket`); one module per repo, files at the repo root
