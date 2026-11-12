@@ -1,0 +1,15 @@
+resource_changes = {
+	"aws_instance.demo": {
+		"address": "aws_instance.demo",
+		"mode":    "managed",
+		"type":    "aws_instance",
+		"name":    "demo",
+		"change": {
+			"actions": ["create"],
+			"after": {
+				"instance_type": "t2.micro",
+				"tags":          {},
+			},
+		},
+	},
+}
