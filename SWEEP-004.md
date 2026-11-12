@@ -30,3 +30,6 @@ The course is the **003** exam. When the sweep is requested: check the current o
 - [x] S3 backend: user confirmed it worked in a previous project (not re-run in this repo). Re-test live during the sweep if possible
 - [x] `azurerm` backend (Azure Storage): user confirmed it worked in a previous project (not re-run here). Re-test live during the sweep if possible
 - [ ] HCP Terraform / Enterprise behaviour (taken from the course only)
+- [ ] `examples/08-hcp-terraform/sentinel`: Sentinel policy passes `sentinel test` (CLI 0.41.0) on hand-written mocks; still run it in a real policy set with real plan data. Also check whether 004 expects OPA alongside Sentinel
+- [ ] Sentinel CLI licence terms are not stated in the CLI docs: confirm them, and confirm which plans include policy enforcement today
+- [ ] Enforcement levels: the newer "Terraform policy" language (Advisory / Mandatory overridable / Mandatory) is from the docs only; check whether 004 covers it and try it

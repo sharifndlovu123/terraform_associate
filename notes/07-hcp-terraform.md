@@ -130,6 +130,77 @@ Checked against the official docs on 2026-11-04. Plans and limits change, so con
 - Without one, the archive skips `.git/` and `.terraform/` (but keeps `.terraform/modules`)
 - Only the root file is read; `.terraformignore` files in subdirectories are ignored
 
+## Policy sets (Sentinel)
+
+A **policy set** is a group of policies applied to chosen workspaces. Policies are checked after the plan, before apply. Runnable-style example: [`examples/08-hcp-terraform/sentinel`](../examples/08-hcp-terraform/sentinel).
+
+```hcl
+# sentinel.hcl: lists the policies in the set and how strictly each is enforced
+policy "restrict-ec2" {
+  source            = "./restrict-ec2.sentinel"
+  enforcement_level = "hard-mandatory"
+}
+```
+
+```text
+# restrict-ec2.sentinel (shape only; full file in the example)
+import "tfplan/v2" as tfplan
+main = rule { all ec2_instances as _, rc { rc.change.after.instance_type in allowed_types } }
+```
+
+### Enforcement levels
+
+Set per policy in `sentinel.hcl` (or in the UI's **Enforcement mode** field). The values are case-sensitive strings:
+
+```hcl
+policy "naming" {
+  source            = "./naming.sentinel"
+  enforcement_level = "advisory"
+}
+
+policy "instance" {
+  source            = "./instance.sentinel"
+  enforcement_level = "soft-mandatory"
+}
+
+policy "no-public-s3" {
+  source            = "./no-public-s3.sentinel"
+  enforcement_level = "hard-mandatory"
+}
+```
+
+| Value (Sentinel) | When `main` is false | Override? |
+|------------------|----------------------|-----------|
+| `advisory` | logged and shown in the UI, run continues | not needed |
+| `soft-mandatory` | run stops before apply | yes, by a user with the **Manage Policy Overrides** permission (the organisation decides which teams) |
+| `hard-mandatory` | run stops before apply | no, fix the config and re-run |
+
+Other products use different names for the same idea:
+
+| Policy type | Values |
+|-------------|--------|
+| Sentinel | `advisory`, `soft-mandatory`, `hard-mandatory` |
+| OPA | `advisory`, `mandatory` (mandatory can be overridden by anyone with Manage Policy Overrides) |
+| Terraform policy (newer language, per the docs, not tried here) | `Advisory`, `Mandatory overridable`, `Mandatory` |
+
+- A policy set can also be set to "can be overridden in the event of mandatory failures": that lets admins or team owners override **any** failed policy in the set, even `hard-mandatory`, and it takes precedence over the per-policy level
+- Pick the level by how bad a miss is: `advisory` for naming and tagging nudges, `soft-mandatory` when exceptions happen (approved larger instance), `hard-mandatory` for rules that must never break (public buckets)
+- The local `sentinel test` only checks `main`; levels are applied by HCP Terraform, so they cannot be exercised locally
+
+- Policies run in the order listed in `sentinel.hcl`; the rule named `main` decides pass or fail
+- Connect it under **Settings > Policy Sets**: pick Sentinel, link the repo holding the policies, scope it to workspaces (or the whole organisation), choose a runtime version
+- Sentinel imports give policies access to the plan (`tfplan/v2`), the configuration, state and run data (`tfrun`), and cost estimates (`tfcost`)
+- Failed check: fix the config or the variable and queue a new run, or discard it
+- Needs a plan that includes policy enforcement (see the plans table above)
+
+| Where Sentinel runs | Cost |
+|---------------------|------|
+| Local `sentinel` CLI (`sentinel test`, `sentinel apply` against mock data) | free to download and use for writing and testing, no account (the download needed no login or licence key) |
+| HCP Terraform policy sets (enforced on real runs) | paid plan with policy enforcement (Standard and up in the table above) |
+| Terraform Enterprise | licensed |
+
+The official CLI docs say nothing about licence terms, so check HashiCorp's terms before using the CLI commercially.
+
 ## Terms
 
 | Term | Meaning |

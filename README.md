@@ -28,6 +28,11 @@ Code and commands only: no conceptual or theory notes (e.g. what IaC is). Quick 
 
 These notes come from studying the ExamPro Terraform Associate course (hosted on the freeCodeCamp YouTube channel). Everything here is paraphrased in my own words with my own example code; none of it is a copy of the course material. For the real thing, including their cheat sheets, practice exams and flash cards, go to [exampro.co/terraform](https://www.exampro.co/terraform).
 
+The Sentinel example in [`examples/08-hcp-terraform/sentinel`](examples/08-hcp-terraform/sentinel) also follows two HashiCorp tutorials, again paraphrased with my own policy, mocks and tests:
+
+- [Sentinel and HCP Terraform integration](https://developer.hashicorp.com/terraform/tutorials/policy/sentinel-cloud-integration)
+- [Test Sentinel policies](https://developer.hashicorp.com/terraform/tutorials/policy/sentinel-testing)
+
 ## Conventions
 
 - Keep each note short and scannable: bullets, tables, code blocks.
