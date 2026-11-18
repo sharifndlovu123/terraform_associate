@@ -23,6 +23,7 @@ Code and commands only: no conceptual or theory notes (e.g. what IaC is). Quick 
 5. [State management](notes/05-state.md)
 6. [Maintain infrastructure](notes/06-maintain-infrastructure.md) (import, drift, debugging)
 7. [HCP Terraform](notes/07-hcp-terraform.md)
+8. [Ecosystem tools](notes/08-ecosystem-tools.md) (Consul, Vault, Atlantis, CDKTF, Terragrunt, Terratest, testing)
 
 ## Credit
 

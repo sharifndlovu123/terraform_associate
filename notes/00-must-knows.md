@@ -16,6 +16,8 @@
 **HCL** is the shared config language toolkit. Used by Terraform (`.tf`), Packer (`.pkr.hcl`), Vault policies (no extension), Consul/Boundary/Waypoint (`.hcl`), Nomad (`.nomad`).
 Sentinel does **not** use HCL (its own language).
 
+Consul, Vault and the wider ecosystem (Atlantis, CDKTF, Terragrunt, Terratest): [08-ecosystem-tools](08-ecosystem-tools.md).
+
 ## Packer in one page
 
 Packer builds a **machine image** once, before deploy: immutable infrastructure, every VM in the fleet identical, faster deploys, and package problems found at build time. It is a tool you run (by hand or on a build server), not a service.

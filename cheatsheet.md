@@ -400,6 +400,14 @@ Read a version by **position**: first digit = **major**, second = **minor**, thi
 - Progressive versioning: stay current in small steps and run a nightly `plan`/build as the early warning (see `07-versions/nightly-check.sh`)
 - Hands-on version in [`examples/07-versions`](examples/07-versions)
 
+## Testing
+
+```bash
+terraform fmt -check && terraform validate   # static analysis, no deploy
+terraform test                               # runs tests/*.tftest.hcl (1.6+)
+terraform test -verbose
+```
+
 ## Packer and Sentinel CLIs
 
 ```bash
