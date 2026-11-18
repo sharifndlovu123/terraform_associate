@@ -12,7 +12,8 @@
 | `terraform apply` | Make the changes (`-auto-approve`; `apply FILE` runs a saved plan with no prompt) |
 | `terraform apply -replace='ADDR'` | Rebuild one resource (replaces deprecated `taint`) |
 | `terraform apply -refresh-only` | Update state to match reality (replaces deprecated `refresh`) |
-| `terraform import ADDR ID` | Adopt an existing real resource into state, one at a time |
+| `terraform import ADDR ID` | Adopt an existing real resource into state, one at a time (or `import` blocks, 1.5+, reviewed in `plan`) |
+| `terraform plan -generate-config-out=FILE` | Draft resource blocks for `import` targets (**Experimental**, still in 1.17) |
 | `terraform destroy` | Tear everything down |
 | `terraform show` | Inspect state or a saved plan |
 | `terraform output [name]` | Print output values (`-json`, `-raw` for a single string) |
@@ -20,6 +21,8 @@
 | `terraform workspace list` / `new NAME` / `select NAME` / `show` / `delete NAME` | Manage CLI workspaces (separate state per name) |
 | `terraform state list` | List resources in state |
 | `terraform state show ADDR` / `mv` / `rm` / `pull` / `push` / `replace-provider` | Inspect, rename/move, forget, download, upload, switch provider |
+| `terraform state identities -json` | **New (1.12)**: list resource identities in state |
+| `terraform query` | **New (1.14)**, extra, not in 004: search a provider for existing objects via `*.tfquery.hcl` |
 
 ## HCL patterns
 
@@ -68,6 +71,26 @@ for_each = var.on ? [1] : []      # trick: optional block (one or none)
 
 # string directives
 "Hi %{ if var.who != "" }${var.who}%{ else }there%{ endif }"
+```
+
+State refactoring blocks (004: 6d, 7a):
+
+```hcl
+moved {                      # 1.1+: rename without destroy
+  from = aws_instance.a
+  to   = aws_instance.b
+}
+
+removed {                    # New (1.7): forget (destroy = false) or destroy; delete the resource block first
+  from = aws_instance.old    # whole resource or module, no [index]
+  lifecycle { destroy = false }
+}
+
+import {                     # 1.5+; for_each New (1.7); identity instead of id New (1.12)
+  for_each = { a = "i-111", b = "i-222" }
+  to       = aws_instance.web[each.key]
+  id       = each.value
+}
 ```
 
 Runnable versions of all of these are in [`examples/`](examples/).
@@ -213,6 +236,9 @@ trim("?!hello?!", "!?")                             # -> "hello"       (any list
 trimprefix("helloworld", "hello")                   # -> "world"       (unchanged if no match)
 trimsuffix("helloworld", "world")                   # -> "hello"
 trimspace("  hello\n\n")                           # -> "hello"
+startswith("hello", "he")  endswith("hello", "lo")  # -> true  true      (New (1.3))
+strcontains("hello world", "wor")                   # -> true            (New (1.5))
+templatestring(local.tpl, { name = "Ann" })         # -> "Hi Ann" with local.tpl = "Hi $${name}"  (New (1.9); 1st arg must be a reference, not a literal)
 ```
 
 **Collection**
@@ -258,7 +284,15 @@ try(tonumber("abc"), 0)                             # -> 0            (first exp
 can(tonumber("abc"))                                # -> false        (true/false: does it evaluate?)
 type(["a"])                                         # -> tuple([string])   (console only)
 sensitive("x")  nonsensitive(sensitive("x"))        # -> mark a value sensitive / unmark it
+issensitive(sensitive("x"))                         # -> true          (New (1.8))
+ephemeralasnull(var.token)                          # -> null if ephemeral, else the value  (New (1.10), for ephemeral values)
 ```
+
+Newer function features:
+
+- **New (1.5)**: `plantimestamp()` = time the plan was made, stable between plan and apply (unlike `timestamp()`); not available in a plain `terraform console`
+- **New (1.8)**: provider-defined functions, called as `provider::<NAME>::<FUNCTION>(...)`, e.g. `provider::terraform::encode_tfvars({ a = 1 })` -> `"a = 1\n"`; the provider must be in `required_providers` (here `terraform = { source = "terraform.io/builtin/terraform" }`; tested on 1.17.0)
+- Hash weakness still holds: `md5` and `sha1` are fine for change detection or IDs, not for security; use `sha256`/`sha512` (`bcrypt` for passwords). The 1.12 `md5` page still warns about collision attacks and shows no deprecation
 
 **Encoding**
 
@@ -380,7 +414,7 @@ try(local.foo.baz, "fallback")                   # -> "fallback"  (first argumen
 try(tonumber("abc"), 0)                          # -> 0
 sensitive(file("${path.module}/hello.txt"))      # mark a value sensitive: shown as (sensitive value)
 nonsensitive(sha256(var.password))               # remove the mark (use only when the result is safe, e.g. a hash)
-defaults(...)                                    # old helper for optional() attributes, now removed: use optional(type, default)
+defaults(...)                                    # 003 only: experimental helper, removed in 1.3 ("Call to unknown function" on 1.17); use optional(type, default)
 ```
 
 - `can` and `try` catch evaluation errors such as a missing attribute or a failed conversion. They do not rescue a reference to a name that is not declared at all (that fails earlier)
@@ -424,7 +458,7 @@ sentinel fmt FILE      # format a policy (takes a file, not a directory)
 ## Private registry modules
 
 - Repo name must be `terraform-<PROVIDER>-<NAME>` (`terraform-aws-demo-bucket`); one module per repo, files at the repo root
-- Versions come from **semver git tags** (`v1.0.0`); publish via HCP Terraform -> Registry -> Publish -> Module (needs a connected VCS provider)
+- Versions come from **semver git tags** (`v1.0.0` or `1.0.0`, the `v` is optional); publish via HCP Terraform -> Registry -> Publish -> Module (needs a connected VCS provider)
 - Source address: `<HOSTNAME>/<ORG>/<NAME>/<PROVIDER>` -> `app.terraform.io/devbridge-playground/demo-bucket/aws`; consumers need `terraform login`
 - Only registry sources accept `version`; a local path (`../..`) or a plain Git URL ignores/cannot use it
 - Registry docs are generated from `README.md`, variable and output `description`s
@@ -447,6 +481,8 @@ env `TF_VAR_*` < `terraform.tfvars` < `terraform.tfvars.json` < `*.auto.tfvars[.
 - `backend "remote"` with both `name` and `prefix` fails at `init`; use the `cloud` block for HCP Terraform
 - `TF_LOG` (or `TF_LOG_CORE` / `TF_LOG_PROVIDER`) plus `TF_LOG_PATH` for logs; a Go panic writes `crash.log`
 - `force-unlock` only for your own stuck lock, never someone else's active one
+- S3 backend: `use_lockfile = true` (GA 1.11); `dynamodb_table` locking is deprecated since 1.11
+- `removed` destroys by default; `lifecycle { destroy = false }` only forgets. Its `from` cannot have an `[index]`
 - `.terraform.lock.hcl` = provider dependency lock; `.terraform.tfstate.lock.info` = state lock while a run is active
 - `sensitive = true` hides values in the CLI only; they stay in the state file in plain text
 - `for_each` needs a map or set: wrap lists in `toset()`

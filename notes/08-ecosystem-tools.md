@@ -1,8 +1,12 @@
 # Ecosystem Tools
 
-Tools around Terraform. Marked **Newer** where the course slide is dated (checked 2026-11-12, confirm before relying on it).
+Tools around Terraform. Marked **Newer** where the course slide is dated (re-checked 2026-11-18 against official docs, project repos and sites; confirm before relying on it).
+
+004 scope: only the **Vault / secrets** part is tested (**4h**, sensitive data and secrets management). Consul, Atlantis, CDKTF, Gruntwork (Terragrunt, Terratest), Kitchen-Terraform and the testing pyramid are **Extra, not in 004**: kept for background.
 
 ## Consul
+
+**Extra, not in 004.**
 
 Service networking platform: service discovery (central registry, services talk directly, no load balancer as single point of failure), service mesh (traffic between services, "middleware" layer) and application configuration. Worth it with hundreds or thousands of services.
 
@@ -19,6 +23,8 @@ terraform {
 ```
 
 ## Vault and Terraform
+
+004: 4h.
 
 Vault gives one interface to many secret stores (AWS, Consul KV, Google Cloud KMS, Azure service principals), with tight access control: **just-in-time** (short windows) and **just enough privilege** (least permission), plus a tamper-evident audit log. Runs as a cluster on VMs and can be backed up with snapshots.
 
@@ -43,23 +49,40 @@ provider "aws" {
 Full file: [`examples/11-ecosystem-tools/vault-credentials`](../examples/11-ecosystem-tools/vault-credentials).
 
 - Data source results are written to **state**, so those credentials end up in the state file (short-lived, but still protect the state)
-- **Newer**: Terraform 1.10+ added ephemeral values that are kept out of state, and newer Vault provider releases offer ephemeral resources for secrets. Check the provider docs for the current recommended way (not tried here)
+- **New (1.10)**: ephemeral resources (`ephemeral` block) plus ephemeral input variables and outputs: values never written to plan or state. **New (1.11)**: write-only arguments (`*_wo`) on managed resources accept ephemeral values without storing them. Both exist in Terraform 1.12, the version 004 tests
+- The Vault provider (now **5.x**, 5.13.0 latest on 2026-11-18; the course era was 3.x/4.x) has ephemeral versions of many secret sources, e.g. `vault_aws_access_credentials`, `vault_kv_secret_v2`, `vault_database_secret`. Same idea as above, kept out of state (from the provider docs, not tried here):
+
+```hcl
+ephemeral "vault_aws_access_credentials" "creds" {
+  mount = "aws"        # ephemeral version says mount, the data source says backend
+  role  = "deploy"
+  type  = "sts"        # sts also returns security_token
+}
+
+provider "aws" {
+  access_key = ephemeral.vault_aws_access_credentials.creds.access_key
+  secret_key = ephemeral.vault_aws_access_credentials.creds.secret_key
+  token      = ephemeral.vault_aws_access_credentials.creds.security_token
+}
+```
+
+- In HCP Terraform, **dynamic provider credentials** (OIDC, incl. Vault-backed) avoid stored keys altogether, see [notes/07](07-hcp-terraform.md#organise-and-govern-004-8b-8c)
 
 ## Atlantis
 
-Open-source tool that automates Terraform pull requests: a bot runs `plan` and `apply` from PR comments and replies with the output, then the PR is merged. Built as an alternative to Terraform Cloud's VCS automation. Site: runatlantis.io.
+**Extra, not in 004.** Open-source tool that automates Terraform pull requests: a bot runs `plan` and `apply` from PR comments and replies with the output, then the PR is merged. Built as an alternative to Terraform Cloud's VCS automation. Site: runatlantis.io.
 
-- **Newer / correction**: the course says HashiCorp maintains it. Today Atlantis is a community project and a **CNCF Sandbox** project (accepted June 2024); its maintainers say it is not a HashiCorp product
+- **Newer / correction**: the course says HashiCorp maintains it. Today Atlantis is a community project and a **CNCF Sandbox** project (accepted June 2024); its maintainers say it is not a HashiCorp product. Re-checked 2026-11-18: still CNCF Sandbox (accepted 2024-06-18), repo active
 
 ## CDK for Terraform (CDKTF)
 
-AWS CDK is an **imperative** IaC tool: write TypeScript, Python, Java, C# or Go and it synthesizes **CloudFormation** (AWS only). CDKTF is HashiCorp's separate project that generates **Terraform** configuration instead (JSON or HCL), so the CDK style works for any Terraform provider.
+**Extra, not in 004.** AWS CDK is an **imperative** IaC tool: write TypeScript, Python, Java, C# or Go and it synthesizes **CloudFormation** (AWS only). CDKTF is HashiCorp's separate project that generates **Terraform** configuration instead (JSON or HCL), so the CDK style works for any Terraform provider.
 
-- **Newer / outdated**: HashiCorp deprecated and archived CDKTF on **2025-12-10**: no more fixes or provider compatibility updates. The recommended path is plain HCL (`cdktf synth --hcl` exports an existing project). Alternatives people mention: Pulumi, AWS CDK, OpenTofu, and a community fork (CDK Terrain). Treat CDKTF as a historical topic
+- **Newer / outdated**: HashiCorp deprecated and archived CDKTF on **2025-12-10**: no more fixes or provider compatibility updates. HashiCorp's advice (README, re-checked 2026-11-18, repo archived/read-only): move to plain Terraform + HCL (`cdktf synth --hcl` writes `.tf` files, then normal `init`/`plan`/`apply`, expect some cleanup), or to AWS CDK if the stack is already tied to it. Code is MPL, so community forks are welcome (e.g. CDK Terrain, not checked). Treat CDKTF as a historical topic
 
 ## Gruntwork
 
-Company building tools around Terraform:
+**Extra, not in 004.** Company building tools around Terraform:
 
 | Product | What it is |
 |---------|------------|
@@ -98,9 +121,13 @@ inputs = {                         # the module's variables
 File: [`examples/11-ecosystem-tools/terragrunt`](../examples/11-ecosystem-tools/terragrunt) (not run: Terragrunt was not installed here).
 
 - It also keeps modules small, which helps when writing unit tests for infrastructure
-- **Newer**: Terragrunt is on 1.x now and its CLI was reworked since the course (the `run-all` commands became `run --all`). Check `terragrunt --help` for your version
+- **Newer**: Terragrunt is on 1.x now (1.2.2 on 2026-11-11) and its CLI was reworked since the course: the `run-all` commands became `run --all` (e.g. `terragrunt run --all plan`; `apply`/`destroy` add `-auto-approve` for you, `--filter` narrows units). Docs moved to docs.terragrunt.com. Re-checked 2026-11-18; check `terragrunt --help` for your version
 
 ## Testing in Terraform
+
+**Extra, not in 004** (the pyramid and third-party tools). Whether 004 covers `terraform test` is tracked separately in the sweep list (not checked here).
+
+- **Newer** (re-checked 2026-11-18 on GitHub): **Kitchen-Terraform** is archived (last release 7.0.2, 2023), treat as dead; **terraform-compliance** still released (1.17.2, 2026-11-12); **InSpec** still active (Chef/Progress, 5.24.x)
 
 | Rung | Tests | Tools |
 |------|-------|-------|

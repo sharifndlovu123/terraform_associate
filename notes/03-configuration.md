@@ -2,8 +2,8 @@
 
 ## Input variables
 
-Arguments you can set: `type`, `default` (having one makes the variable optional), `description`, `validation`, `sensitive`.
-Declared in the root module or in child modules.
+Arguments you can set: `type`, `default` (having one makes the variable optional), `description`, `validation`, `sensitive`, `nullable`, and **New (1.10)** `ephemeral` (see [sensitive data](#sensitive-data-004-4h)).
+Declared in the root module or in child modules. 004: 4c.
 
 ### How values are loaded
 
@@ -25,7 +25,7 @@ Declared in the root module or in child modules.
 
 ## Outputs
 
-- `output "name" { value, description, sensitive }`
+- `output "name" { value, description, sensitive, depends_on, precondition }`, plus **New (1.10)** `ephemeral = true` (child modules only, a root output cannot be ephemeral)
 - `sensitive = true` only masks CLI output; the value is **still stored in state**
 - Another stack can read them through the `terraform_remote_state` data source
 
@@ -54,11 +54,101 @@ Named values are not objects, so no `[]` access on them.
 
 ## Meta-arguments
 
-- **`depends_on`**: declare an ordering Terraform can't work out from references
+- **`depends_on`**: declare an ordering Terraform can't work out from references (see [dependencies](#dependencies-004-4f))
 - **`count`**: stamp out N copies; `count.index` is zero-based; needs a whole number known at plan time
 - **`for_each`**: one instance per map entry or set element (`each.key`, `each.value`); lists must go through `toset()`
 - **`provider`**: pick an aliased provider (`provider = aws.eu`)
-- **`lifecycle`**: `create_before_destroy`, `prevent_destroy`, `ignore_changes`
+- **`lifecycle`**: `create_before_destroy`, `prevent_destroy`, `ignore_changes`, `replace_triggered_by` (1.2), `precondition` / `postcondition` (1.2)
+
+## Dependencies (004: 4f)
+
+- **Implicit**: referencing another object's attribute (`subnet_id = aws_subnet.a.id`) adds a graph edge; Terraform creates `aws_subnet.a` first. Preferred, because it is visible in the code
+- **Explicit**: `depends_on = [aws_iam_role_policy.x]` for a hidden dependency (e.g. an app instance needs an IAM policy it never references). Takes a list of whole resources/modules, not attributes; static references only
+- Works on resources, data sources, modules (0.13+) and outputs
+- Overusing `depends_on` makes plans more conservative: values downstream can stay "known after apply", data sources get read later
+- Independent resources are created in parallel; destroy runs in reverse dependency order
+- See the graph: `terraform graph` ([02-core-workflow](02-core-workflow.md#terraform-plan))
+
+```hcl
+resource "aws_instance" "app" {
+  subnet_id  = aws_subnet.a.id               # implicit
+  depends_on = [aws_iam_role_policy.s3_read] # explicit, no reference in the arguments
+}
+```
+
+## Custom conditions (004: 4g)
+
+| Kind | Lives in | Checked | Fails with |
+|------|----------|---------|------------|
+| `validation` | `variable` block | before planning, on the input value | error, stops |
+| `precondition` | `lifecycle` of resource/data, or an `output` | before the object is planned/applied | error, stops that object |
+| `postcondition` | `lifecycle` of resource/data | after apply / after a data read; `self` = the object | error, stops dependents (no rollback) |
+| `check` (**New (1.5)**) | top-level `check "name"` with `assert`s, optional scoped `data` block | end of plan and apply, and in HCP Terraform health checks | **warning only**, run continues |
+
+```hcl
+variable "size" {
+  type = string
+  validation {
+    condition     = contains(["small", "large"], var.size)
+    error_message = "size must be small or large."
+  }
+}
+
+resource "aws_instance" "web" {
+  lifecycle {
+    precondition {
+      condition     = data.aws_ami.web.architecture == "x86_64"
+      error_message = "AMI must be x86_64."
+    }
+    postcondition {
+      condition     = self.public_ip != ""
+      error_message = "No public IP assigned."
+    }
+  }
+}
+
+check "site_up" {
+  data "http" "home" { url = "https://example.com" }
+  assert {
+    condition     = data.http.home.status_code == 200
+    error_message = "Site did not return 200."
+  }
+}
+```
+
+- Sample above validated 2026-11-18 (1.17.0, aws 6.73.0, http 3.6.3)
+- Every block needs `condition` (bool) and `error_message`
+- Validation/pre/postconditions since 1.2 (validation since 0.13). **New (1.9)**: a `validation` can reference other variables and objects, not only its own variable (checked on 1.17.0: `var.env == "prod" || var.size == "small"` validates)
+- A condition must reference something from the config; a constant like `1 == 2` is rejected
+- `check` blocks never block apply: use them for ongoing health, use pre/postconditions to stop bad changes
+
+## Sensitive data (004: 4h)
+
+| Mechanism | Hidden in CLI/UI | Kept out of state and plan files | Version |
+|-----------|------------------|----------------------------------|---------|
+| `sensitive = true` (variable, output) | yes | **no** | 0.15 |
+| `ephemeral = true` (variable, child-module output) | no (add `sensitive` too) | yes | **New (1.10)** |
+| `ephemeral "type" "name" {}` block (ephemeral resource) | - | yes, value fetched fresh each run | **New (1.10)** |
+| write-only argument (`*_wo`, plus `*_wo_version`) | yes | yes, provider uses it then it is dropped | **New (1.11)** |
+
+```hcl
+ephemeral "random_password" "db" {             # hashicorp/random, ephemeral version
+  length = 20
+}
+
+resource "aws_db_instance" "main" {
+  # ...
+  password_wo         = ephemeral.random_password.db.result
+  password_wo_version = 1                       # bump to push a new password
+}
+```
+
+- Ephemeral values may only flow into: locals, other ephemeral variables/outputs, write-only arguments, ephemeral blocks, provider config, provisioner/connection blocks. Anything else errors, e.g. `terraform_data.input = var.pw` -> "Ephemeral values are not valid for input" (checked on 1.17.0)
+- The config above validated with aws 6.73.0 and random 3.9.1 on 1.17.0
+- Write-only arguments are never compared, so Terraform cannot detect a change; bump `*_wo_version` to resend
+- State and plan files otherwise hold secrets in plain text: use a remote backend with encryption at rest and tight access (HCP Terraform encrypts state; S3 `encrypt = true`), never commit `*.tfstate`, treat saved plans as secret
+- Supply secrets via `TF_VAR_x` or a secrets manager instead of hardcoding them in `.tf` or committed `.tfvars`
+- **Vault**: the Vault provider reads secrets from Vault (data sources, or **New (1.10)** ephemeral resources such as `vault_kv_secret_v2` so the secret skips state), or issues short-lived dynamic cloud credentials. Example: [`examples/13-vault`](../examples/13-vault); more in [08-ecosystem-tools](08-ecosystem-tools.md)
 
 ## Dynamic blocks
 
@@ -100,6 +190,8 @@ dynamic "website" {
 }
 ```
 
+- Checked 2026-11-18: this pattern passes `terraform validate` inside an `aws_s3_bucket` (Terraform 1.17.0, aws 6.73.0). But the inline `website` block on `aws_s3_bucket` is **deprecated** since AWS provider v4 (schema marks it deprecated); real code uses the separate `aws_s3_bucket_website_configuration` resource. Keep it only as a splat/dynamic-block illustration
+
 Try these in [`terraform console`](../cheatsheet.md#terraform-console).
 
 ## Resource behaviour on apply
@@ -124,7 +216,8 @@ resource "aws_db_instance" "example" {
 ```
 
 - The resource type (`aws_instance`) picks the kind of infrastructure object and implies the provider
-- `timeouts` sets how long an operation may run before it counts as failed
+- `timeouts` sets how long an operation may run before it counts as failed. Checked 2026-11-18: the sample validates on `aws_db_instance` (aws 6.73.0), which offers `create`, `update`, `delete`; the allowed keys differ per resource type (see its registry page)
+- 004: 4a (`resource` creates/manages, `data` only reads), 4b (`<type>.<name>.<attr>` references)
 
 ## Types and values
 
@@ -148,6 +241,7 @@ variable "with_optional" {
 }
 ```
 
+- `optional(type, default)` became stable in **1.3** (004: 4d). **003 only**: the experimental `defaults()` function used before that was removed in 1.3 and is now an unknown function (checked in `terraform console`, 1.17.0); put the default as `optional`'s second argument instead
 - A **list** is indexed by number, a **map** by key
 - A **set** has no index and no order, all values share one type and are converted to match: `toset(["a", "b", 3])` gives `["3", "a", "b"]`
 - An **object** is a map with explicit, typed keys; a **tuple** is a list with a type per position
@@ -172,4 +266,6 @@ Examples: [`01-variables-outputs-locals`](../examples/01-variables-outputs-local
 
 - `.tfvars` is Terraform language, not JSON; JSON variant is `.tfvars.json`
 - `terraform output` (singular) is the command
-- `sensitive` doesn't encrypt anything
+- `sensitive` doesn't encrypt anything and doesn't keep values out of state; `ephemeral` / write-only do. `terraform output -json` or `-raw` prints sensitive outputs in clear text
+- A failing `check` assertion is a warning; failing validation/pre/postconditions are errors
+- Prefer implicit dependencies; `depends_on` is for dependencies Terraform cannot see

@@ -2,10 +2,12 @@
 
 Docs: <https://developer.hashicorp.com/terraform/cloud-docs>
 
+004 objective 8 maps here: **8a** create infrastructure (workspaces, run workflows), **8b** collaboration and governance (Explorer, private registry, change requests, policy enforcement, projects, health, teams), **8c** organise workspaces and projects (new in 004: projects, variable sets, run triggers), **8d** CLI integration (`cloud` block, `terraform login`, state migration). Checked against the official docs on 2026-11-18, docs only (no live HCP account).
+
 ## What it is
 
 - A hosted service from HashiCorp (at `app.terraform.io`) that runs Terraform for a team: it keeps the state, runs plan/apply, and controls who may change what
-- **Same product as "Terraform Cloud"**: renamed HCP Terraform in April 2024. Course material and the exam may still say either name
+- **Same product as "Terraform Cloud"**: renamed HCP Terraform on 22 April 2024, same features under the new name. The course says "Terraform Cloud"; 004 says HCP Terraform
 - **Terraform Enterprise** is the self-hosted version of the same thing, for organisations that need their own private install
 - The idea in one line: it replaces your laptop as the place where Terraform runs and where state lives
 
@@ -43,7 +45,7 @@ Run stages, in order (each one is skipped if not enabled):
 
 ## Drift detection (health assessments)
 
-HCP Terraform's **health assessments** have two parts: drift detection and continuous validation.
+004: 8b (Health). HCP Terraform's **health assessments** have two parts: drift detection and continuous validation. Plan requirement re-checked 2026-11-18.
 
 **Drift detection**
 
@@ -74,6 +76,8 @@ Docs: <https://developer.hashicorp.com/terraform/cloud-docs/workspaces/health>
 
 ## Code: the `cloud` block
 
+004: 8d.
+
 ```hcl
 terraform {
   cloud {
@@ -89,6 +93,8 @@ terraform {
 - `workspaces` takes a single `name`, or `tags` and/or a `project` to cover several workspaces
 - Needs `terraform login` first (saves an API token in a credentials file), then `terraform init`
 - It replaces the older `backend "remote"` setup
+- **Migrating state**: add the `cloud` block to a config that already has local (or other backend) state, run `terraform init`, and it offers to copy the existing state into the HCP Terraform workspace
+- The block's settings can also come from environment variables (`TF_CLOUD_ORGANIZATION`, `TF_CLOUD_HOSTNAME`, `TF_CLOUD_PROJECT`, `TF_WORKSPACE`), handy in CI
 - Example that validates offline: [`examples/08-hcp-terraform`](../examples/08-hcp-terraform)
 
 ```bash
@@ -99,17 +105,24 @@ terraform plan         # runs remotely by default, output streams to your termin
 
 ## Plans at a glance
 
-Checked against the official docs on 2026-11-04. Plans and limits change, so confirm on the current plans page before relying on this.
+Re-checked against the official docs on 2026-11-18 (plans overview, health and change-requests pages, policy-set docs). Plans and limits change, so confirm on the current plans page before relying on this.
 
 | | Free | Essentials | Standard | Premium |
 |---|------|------------|----------|---------|
-| Managed resources | up to 500 | unlimited | unlimited | unlimited |
-| Remote runs, VCS, private registry, SSO, run tasks | yes | yes | yes | yes |
-| Teams and custom RBAC | no | yes | yes | yes |
-| Policy enforcement and cost estimation | no | no | yes | yes |
+| Managed resources | up to 500 | unlimited (billed per resource) | unlimited | unlimited |
+| Remote runs, VCS, private registry, projects, SSO, run tasks | yes | yes | yes | yes |
+| Teams and custom RBAC (incl. project permissions) | no | yes | yes | yes |
+| Policy enforcement | 1 policy set, max 5 policies (see note) | no | yes | yes |
+| Cost estimation | no | no | yes | yes |
 | Health assessments (drift detection, continuous validation) | no | no | yes | yes |
+| Change requests | no | no | yes | yes |
 | Audit logging | no | no | no | yes |
-| Concurrent runs | 1 | 3 | 10 | 200 |
+| Policy evaluation on your own agents | no | no | no | yes |
+| Concurrent runs (remote / agent) | 1 / 1 | 3 / 1 | 10 / 10 | 200 / 300 |
+
+- Free policy note: the plans comparison table shows no policy enforcement for Free, but the same page and the policy-set docs say Free gets one policy set of up to five policies. The docs disagree with themselves; trust the policy-set page and re-check
+- **New (2026)**: the old **Free (legacy)** plan reached end of life on 2026-03-31; remaining orgs were moved to the current Free tier (500 resources, unlimited users)
+- The pricing page sells Essentials, Standard and Premium priced per managed resource per month; Terraform Enterprise is custom-priced
 
 ## Private registry
 
@@ -117,6 +130,25 @@ Checked against the official docs on 2026-11-04. Plans and limits change, so con
 - Source address: `app.terraform.io/<ORG>/<NAME>/<PROVIDER>`; consumers run `terraform login` first
 - Docs on the module page are generated from `README.md` and the `description` of each variable and output
 - Walkthrough: [Modules note](04-modules.md#publishing-to-a-private-registry-worked-example)
+
+## Organise and govern (004: 8b, 8c)
+
+Short form of each 8b/8c item; details elsewhere in this note where linked. From the docs only, not tried.
+
+| Feature | In one line |
+|---------|-------------|
+| **Projects** (**New (2023)**, 8c) | folder for workspaces (and Stacks); every workspace sits in **exactly one** project, `Default Project` if not chosen (can rename, not delete); teams get access per project; workspaces can be moved between projects |
+| **Variable sets** (8c) | reusable group of Terraform or environment variables applied globally, to projects, or to chosen workspaces. Precedence: a workspace variable with the same key wins over the set, and CLI run variables win over both. A **priority** variable set flips that and overrides even workspace values, `-var` and `.tfvars` |
+| **Run triggers** (8c) | a successful apply in a source workspace queues a run in yours, see [Workspaces and runs](#workspaces-and-runs) |
+| **Teams** (8b) | groups of users that receive permissions at organisation, project and workspace level; every org has an **Owners** team, see [Permissions](#permissions) |
+| **Health** (8b) | drift detection plus continuous validation, see [Drift detection](#drift-detection-health-assessments) |
+| **Explorer** (**New (2024)**, beta 2023, GA Feb 2024, 8b) | org-wide read-only view to query Workspaces, Modules, Providers and Terraform versions (e.g. "drifted workspaces", old provider versions); filters, sorting, saved views. Needs owner or "View all workspaces" |
+| **Change requests** (**New (2025)**, GA Feb 2025, 8b) | to-do items an admin attaches to workspaces (often from an Explorer query: "upgrade this provider"); team members archive them when done. Standard and Premium |
+| **Policy enforcement** (8b) | policy sets of Sentinel or OPA (and the newer Terraform policy) checked on each run, see [Sentinel and policy as code](#sentinel-and-policy-as-code) |
+| **Private registry** (8b) | org-only modules and providers, see [Private registry](#private-registry) |
+| **Dynamic provider credentials** (**New (2023)**, 8b) | no stored cloud keys: each plan/apply gets an OIDC workload identity token that AWS, Azure, GCP, Vault, Kubernetes or HCP swaps for short-lived credentials, thrown away after the run. Set a trust relationship on the cloud side plus env vars on the workspace (e.g. `TFC_AWS_PROVIDER_AUTH`, `TFC_AWS_RUN_ROLE_ARN`). **Vault-backed** variant: Vault mints the AWS/Azure/GCP credentials |
+
+Docs: projects <https://developer.hashicorp.com/terraform/cloud-docs/projects>, variable sets <https://developer.hashicorp.com/terraform/cloud-docs/variables/managing-variables>, Explorer <https://developer.hashicorp.com/terraform/cloud-docs/workspaces/explorer>, change requests <https://developer.hashicorp.com/terraform/cloud-docs/workspaces/change-requests>, dynamic credentials <https://developer.hashicorp.com/terraform/cloud-docs/dynamic-provider-credentials>.
 
 ## Gotchas
 
@@ -144,7 +176,18 @@ Checked against the official docs on 2026-11-04. Plans and limits change, so con
 
 Benefits the course lists for policy as code: **sandboxing** (guardrails instead of manual checks), **codification** (the policy is exactly what is enforced), **version control** (history of changes), **testing** (syntax and behaviour validated with the CLI, see the example), **automation** (integrates with other systems to notify or remediate).
 
-Course-era note: Sentinel was sold as part of the Team & Governance upgrade (see the plans below).
+**003 only**: Sentinel was sold as part of the Team & Governance upgrade (see the course-era plans below). Today policy enforcement is Standard and Premium, with a small allowance on Free (plans table above).
+
+**004: 8b** lists policy enforcement in general, and its tutorials include OPA policies, so know **both** frameworks at the "what and how strict" level:
+
+| Framework | Language | Levels | Status |
+|-----------|----------|--------|--------|
+| Sentinel | Sentinel (own language) | advisory, soft-mandatory, hard-mandatory | stable, workspaces only |
+| OPA | Rego | advisory, mandatory | stable, workspaces only |
+| Terraform policy (`tfpolicy`) | HCL (`policy`, `enforce` blocks), tested locally with the `tfpolicy` CLI | Advisory, Mandatory overridable, Mandatory | **New (2026)**: HashiCorp's blog called it GA in HCP Terraform on 2026-07-16 (earlier versions were beta, and some press still said public beta). Needs Terraform 1.17+, works with workspaces and Stacks. **Extra, not in 004** (exam tests 1.12) |
+
+- One policy set holds one framework only; sets of different frameworks can apply to the same workspace
+- Policy sets scope globally, to projects, or to chosen workspaces
 
 Policies people commonly write:
 
@@ -234,7 +277,7 @@ Other products use different names for the same idea:
 |-------------|--------|
 | Sentinel | `advisory`, `soft-mandatory`, `hard-mandatory` |
 | OPA | `advisory`, `mandatory` (mandatory can be overridden by anyone with Manage Policy Overrides) |
-| Terraform policy (newer language, per the docs, not tried here) | `Advisory`, `Mandatory overridable`, `Mandatory` |
+| Terraform policy (**New (2026)**, Terraform 1.17+, not tried here, extra) | `Advisory`, `Mandatory overridable`, `Mandatory` |
 
 - A policy set can also be set to "can be overridden in the event of mandatory failures": that lets admins or team owners override **any** failed policy in the set, even `hard-mandatory`, and it takes precedence over the per-policy level
 - Pick the level by how bad a miss is: `advisory` for naming and tagging nudges, `soft-mandatory` when exceptions happen (approved larger instance), `hard-mandatory` for rules that must never break (public buckets)
@@ -249,10 +292,11 @@ Other products use different names for the same idea:
 | Where Sentinel runs | Cost |
 |---------------------|------|
 | Local `sentinel` CLI (`sentinel test`, `sentinel apply` against mock data) | free to download and use for writing and testing, no account (the download needed no login or licence key) |
-| HCP Terraform policy sets (enforced on real runs) | paid plan with policy enforcement (Standard and up in the table above) |
+| HCP Terraform policy sets (enforced on real runs) | Standard and Premium. Free: the docs disagree (one set of up to five policies vs "not available"), the pricing page has no policy row (re-checked 2026-11-18) |
 | Terraform Enterprise | licensed |
 
-The official CLI docs say nothing about licence terms, so check HashiCorp's terms before using the CLI commercially.
+- Licence (re-checked 2026-11-18): the CLI is **proprietary**, not open source. The release zip ships an `EULA.txt` (revocable licence for internal use, normally alongside other HashiCorp software) and `TermsOfEvaluation.txt` (non-production evaluation, 30 days). No key or fee for local policy writing and testing, but that is my reading of the EULA, not a stated rule: check the terms before relying on it commercially
+- **New**: HCP Terraform now runs "policy evaluations"; the older "policy checks" mode is legacy and supports Sentinel only up to 0.40.x. The cost-estimation page says cost estimation only works with the legacy policy checks mode
 
 ## Terms
 
@@ -276,7 +320,7 @@ Other features the course lists: previous runs and state versions kept, secure v
 | State | on disk or in a remote backend | in the workspace |
 | Credentials and secrets | shell environment or prompts | in the workspace, stored as sensitive variables |
 
-**Run triggers**: connect a workspace to one or more **source workspaces** in the same organisation. A successful apply in a source workspace queues a run automatically in yours; each workspace can have up to 20 sources. Use it when a workspace relies on infrastructure or values produced by another (for example it reads them with data sources). Set it under **Settings > Run Triggers**; triggered runs are labelled "Queued automatically by ... from Run Trigger".
+**Run triggers** (004: 8c): connect a workspace to one or more **source workspaces** in the same organisation. A successful apply in a source workspace queues a run automatically in yours; each workspace can have up to 20 sources. Use it when a workspace relies on infrastructure or values produced by another (for example it reads them with data sources). Set it under **Settings > Run Triggers**; triggered runs are labelled "Queued automatically by ... from Run Trigger".
 
 
 - Each workspace page has Overview, Runs, States, Variables and Settings tabs
@@ -315,10 +359,24 @@ variable "TFC_RUN_ID" {}      # declare a variable with that name to read it in 
 
 ## Permissions
 
+Three levels, granted to **teams**: organisation, **project** (newer) and workspace. Permissions add up, and the most generous one wins (e.g. org-level "Manage all workspaces" beats workspace-level Read). Re-checked against the permissions docs on 2026-11-18.
+
 **Organization level** (manage things across the whole organisation)
 
-- Manage policies (Sentinel), manage policy overrides (override soft-mandatory checks), manage workspaces, manage VCS settings
-- **Organization owners** hold every permission, plus owner-only actions: publish private modules, invite users, manage team membership, view all secret teams, manage organisation permissions, settings and billing, manage agents, delete the organisation
+- Course list: manage policies (Sentinel), manage policy overrides (override soft-mandatory checks), manage workspaces, manage VCS settings
+- Current docs group them: projects (View all / Manage all projects), workspaces (View all / Manage all workspaces), teams (manage membership, teams, organisation access, include secret teams), settings (manage policies, run tasks, VCS settings, agent pools), private registry (manage private modules and providers), policy overrides (none / delegate / manage)
+- **Owners team** (every org has one) holds every permission, plus owner-only actions: manage all organisation settings, billing, delete the organisation
+
+**Project level** (**New (2023)**)
+
+| Fixed set | Includes |
+|-----------|----------|
+| Read | see the project and its workspaces |
+| Write | write access to its workspaces: start, cancel, apply runs |
+| Maintain | admin on all its workspaces, can create workspaces; cannot change or delete the project |
+| Admin | everything, plus project settings, delete the project, move workspaces, set team access |
+
+Custom project permissions also exist. Managing project permissions needs Essentials or above.
 
 **Workspace level**
 
@@ -327,9 +385,9 @@ variable "TFC_RUN_ID" {}      # declare a variable with that name to read it in 
 | Read | read runs, variables, state versions |
 | Plan | read, plus queue plans |
 | Write | plan, plus apply runs, lock/unlock workspace, download Sentinel mocks, read and write variables and state versions |
-| Workspace admin | everything, plus workspace settings, set or remove team permissions, delete the workspace |
+| Workspace admin | everything, plus workspace settings, manage workspace run tasks, set or remove team permissions, delete the workspace |
 
-Custom workspace permissions let you grant individual abilities instead (read runs, queue plans, apply runs, lock/unlock, read/write variables, read state outputs, read/write state versions).
+Custom workspace permissions let you grant individual abilities instead (read runs, queue plans, apply runs, lock/unlock, read/write variables, read state outputs, read/write state versions, download Sentinel mocks, manage run tasks, allow policy overrides).
 
 ## API tokens
 
@@ -346,24 +404,31 @@ Custom workspace permissions let you grant individual abilities instead (read ru
 ## Cost estimation
 
 - Shows the monthly cost of the resources in a run next to the plan: hourly cost, monthly cost and monthly delta per resource
-- Only for certain resource types on AWS, Azure and GCP (for example `aws_instance`, `aws_db_instance`, `aws_ebs_volume`, `aws_lb`, `azurerm_virtual_machine`, `azurerm_managed_disk`, `google_compute_instance`, `google_sql_database_instance`)
-- Pair it with a Sentinel policy to fail runs that would cost too much
+- Only for certain resource types on AWS, Azure and GCP (for example `aws_instance`, `aws_db_instance`, `aws_ebs_volume`, `aws_lb`, `azurerm_virtual_machine`, `azurerm_managed_disk`, `google_compute_instance`, `google_sql_database_instance`). Re-checked 2026-11-18: AWS examples still listed; Azure has about 25 priced types (VMs and scale sets, `managed_disk`, MySQL/PostgreSQL/MariaDB servers, `sql_database`, app service plans, `firewall`, `databricks_workspace`, HDInsight...); GCP prices only `google_compute_instance`, `google_compute_disk` and `google_sql_database_instance` (its other supported types are free IAM/project resources). Newer instance or volume types may not be priced
+- Off by default: an org owner turns it on under **Settings > Cost Estimation**; Standard and Premium only
+- Pair it with a Sentinel policy to fail runs that would cost too much (legacy policy checks mode only, see above)
+- Lists: <https://developer.hashicorp.com/terraform/cloud-docs/workspaces/cost-estimation>
 
 ## Agents
 
 - Let HCP Terraform manage **isolated, private or on-premises** infrastructure (vSphere, Nutanix, OpenStack...)
 - **Pull-based**: the agent polls HCP Terraform for work and runs it locally, so no inbound connectivity is needed
 - Course-era requirements: x86_64 Linux (or the official agent Docker image), Terraform 0.12+, at least 4 GB free disk and 2 GB memory, outbound HTTPS (443) to `app.terraform.io`, `registry.terraform.io`, `releases.hashicorp.com` and `archivist.terraform.io`
+- Current docs (re-checked 2026-11-18) keep those and add: **ARM64** Linux too (Terraform 0.13.5+ on ARM64; all agents in a pool share one architecture), outbound TCP **7146** to `agents.terraform.io`, `git` 2.3+ and `ssh` on the PATH, +250 MB memory if request forwarding is on
+- Agent runs are counted separately from remote runs (see the plans table)
+- Docs: <https://developer.hashicorp.com/terraform/cloud-docs/agents/requirements>
 
 ## Terraform Enterprise
 
 - The **self-hosted** distribution of the platform: a private instance with no resource limits plus enterprise features such as audit logging and SAML SSO
 - You provide: a Linux instance, a TLS certificate and private key, a Terraform Enterprise **licence** from HashiCorp, and storage
-- Operational modes (where data is kept): **External services** (PostgreSQL plus object storage such as S3, GCS, Azure Blob or Minio), **Mounted disk** (a separate disk, e.g. EBS or iSCSI), **Demo** (everything on the instance, not for production)
-- Course-era sizing: at least 4 CPU cores, 8 GB memory, 10 GB root disk and 40 GB for the Docker data directory. Supported OS lists change by release, check the docs
+- **003 only** (Replicated-era installer): operational modes **External services** (PostgreSQL plus object storage such as S3, GCS, Azure Blob or Minio), **Mounted disk** (a separate disk, e.g. EBS or iSCSI), **Demo** (everything on the instance, not for production)
+- **003 only**: course-era sizing of at least 4 CPU cores, 8 GB memory, 10 GB root disk and 40 GB for the Docker data directory
+- **Now** (docs re-checked 2026-11-18): Replicated is retired; TFE runs as containers on **Docker, Podman, Kubernetes, OpenShift or Nomad**, on AMD64 or ARM64. Operational modes are `disk` (data on the instance's own mounted storage), `external` (external PostgreSQL + object storage) and `active-active` (external, plus external Redis, several nodes). CPU, memory and supported OS are no longer listed on the docs pages: they point to IBM's software compatibility report per version
+- Docs: <https://developer.hashicorp.com/terraform/enterprise/deploy>
 - **Air-gapped** installs (no internet, common in government, military, finance and energy) are supported: you install or update from an **air gap bundle**, an archive of a release version
 
 ## Course-era plan names
 
-The course (2021) describes: **Free** (up to 5 users, 1 concurrent run), **Teams & Governance** (from about $20 per user per month, 2 concurrent runs, adds team management, Sentinel policy management and cost estimation), **Business** (adds SSO, audit logging, self-hosted agents, configuration designer, ServiceNow integration, unlimited concurrent runs) and **Enterprise** (self-hosted, private). Current names and limits are in the plans table above.
+**003 only**, these names no longer exist. The course (2021) describes: **Free** (up to 5 users, 1 concurrent run), **Teams & Governance** (from about $20 per user per month, 2 concurrent runs, adds team management, Sentinel policy management and cost estimation), **Business** (adds SSO, audit logging, self-hosted agents, configuration designer, ServiceNow integration, unlimited concurrent runs) and **Enterprise** (self-hosted, private). Current names and limits are in the plans table above.
 

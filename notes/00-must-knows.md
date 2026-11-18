@@ -1,5 +1,13 @@
 # Must Knows
 
+## Exam scope: 003 vs 004
+
+Checked 2026-11-18 against the official 004 review page. The 004 exam targets **Terraform 1.12**.
+
+- New objectives in 004: **4f** resource dependencies, **4g** custom conditions (validation, pre/postconditions, `check`), **4h** sensitive data and Vault, **8c** organising HCP Terraform workspaces and projects. Notes for 4f-4h: [03-configuration](03-configuration.md#dependencies-004-4f)
+- Not named in 003 or 004: provisioners, `taint` (both left the objectives at 003), CLI `terraform workspace` (only HCP Terraform workspaces, 8c)
+- Marker legend: `004: 4g` = tested objective; `**New (1.x)**` = arrived after the course, with the version; `Extra, not in 004` = background only; `**003 only**` = course-era content kept for reference
+
 ## HashiCorp products
 
 | Product | Purpose |
@@ -20,6 +28,8 @@ Consul, Vault and the wider ecosystem (Atlantis, CDKTF, Terragrunt, Terratest): 
 
 ## Packer in one page
 
+Extra, not in 004 (no Packer objective in 003 or 004).
+
 Packer builds a **machine image** once, before deploy: immutable infrastructure, every VM in the fleet identical, faster deploys, and package problems found at build time. It is a tool you run (by hand or on a build server), not a service.
 
 Flow: commit -> CI/CD triggers the Packer build -> provisioners (Ansible, Chef, shell...) configure it -> image stored (AWS: EC2 AMIs) -> Terraform references the image -> provisions infrastructure.
@@ -39,6 +49,8 @@ Runnable files: [`examples/10-packer`](../examples/10-packer).
 `write -> init -> plan -> apply -> destroy`
 
 ## Architecture
+
+004: 2b (how Terraform uses providers).
 
 ```
 Terraform Core --RPC--> Plugins (providers, provisioners) --Go--> Client library --HTTP(S)--> Target APIs

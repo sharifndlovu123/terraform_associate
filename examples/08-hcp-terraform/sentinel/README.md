@@ -39,6 +39,7 @@ sentinel test            # now runs restrict-ec2 and restrict-azs
 ```
 
 - In `sentinel.hcl` the helper is declared with a `module "tfplan-functions" { source = ... }` block (this is what HCP Terraform reads)
+- Re-checked 2026-11-18: the file still lives at `common-functions/tfplan-functions/tfplan-functions.sentinel` in `hashicorp/terraform-sentinel-policies`, whose README says the content is moving to the Terraform Registry. The current Sentinel config docs show `import "module" "name" { source = ... }` (local path or a `git::https://...//file.sentinel` URL) and no longer show the `module` block, so confirm which form a policy set accepts before relying on it
 - The local CLI instead reads it from each test case: `import "module" "tfplan-functions" { source = "../../tfplan-functions.sentinel" }`, path relative to the test file (see `test/restrict-azs/*.hcl`)
 - The `fail` case logs the reason: `aws_instance.demo has availability_zone with value eu-west-1a that is not in the allowed list: [...]`
 - Without the download, only the `restrict-azs` tests error (`Import "tfplan-functions" is not available`); `restrict-ec2` is self-contained

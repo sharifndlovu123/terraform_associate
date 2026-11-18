@@ -24,11 +24,31 @@ Version numbers read major.minor.patch (first, second, third digit). Constraint 
 
 Also available: `experiments` (opt in to unfinished language features) and `provider_meta`.
 
-## Providers
+## Dependency lock file (004: 2a, 3b)
+
+- `.terraform.lock.hcl`, written by `terraform init`; commit it so every run picks the same provider builds
+- Per provider it records the chosen `version`, the `constraints` from config and `hashes` (`h1:`/`zh:` checksums of the package)
+- Without `-upgrade`, `init` reuses the locked version even if a newer one matches the constraint
+- Tracks **providers only**, not modules (modules re-resolve from their `version` each `init`)
+- Teams on mixed OSes: `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64` adds checksums for each platform
+
+```hcl
+provider "registry.terraform.io/hashicorp/aws" {
+  version     = "6.73.0"
+  constraints = "~> 6.0"
+  hashes      = ["h1:...", "zh:..."]
+}
+```
+
+## Providers (004: 2a, 2b, 2c)
 
 - A provider is a plugin that lets Terraform talk to one API: a cloud (AWS, Azure, GCP), a SaaS product (GitHub, Stripe) or something else entirely (Kubernetes, Postgres)
 - Three tiers: **Official** (published by the vendor itself), **Verified** (partner-maintained), **Community** (anyone, no maintenance promise)
 - `registry.terraform.io` is where providers and modules are searched and published; each page has docs and a ready-made usage snippet
+- Source address `[hostname/]namespace/type`: `hashicorp/aws` is short for `registry.terraform.io/hashicorp/aws`. Always set `source` in `required_providers`; the local name (`aws`) is what the rest of the config uses
+- Each provider is a separate executable that `init` downloads into `.terraform/providers/`; Core starts it and talks to it over RPC. `TF_PLUGIN_CACHE_DIR` shares one download across working directories
+- One config can use many providers at once (e.g. `aws` + `azurerm` + `random`): list each in `required_providers`, configure each in its own `provider` block
+- **New (1.8)**: provider-defined functions, called as `provider::<local name>::<function>(...)`; the provider must be in `required_providers`. Example: `provider::terraform::encode_expr({ a = 1 })` (built-in provider, source `terraform.io/builtin/terraform`, checked on 1.17.0)
 
 ### Provider alias (multiple configs of one provider)
 
@@ -47,6 +67,8 @@ For modules, see [modules](04-modules.md).
 
 ## Provisioners
 
+Extra, not in 004: provisioners left the objectives at 003 and are not back in 004. Still useful to know they are a last resort.
+
 Last resort; prefer cloud-init, user_data or baked images (Packer / EC2 Image Builder).
 
 | Provisioner | Runs | Notes |
@@ -62,7 +84,7 @@ Last resort; prefer cloud-init, user_data or baked images (Packer / EC2 Image Bu
 ### null_resource / terraform_data
 
 - `null_resource`: a resource with no real infrastructure behind it, used to hang provisioners on; its `triggers` map re-runs them when a value changes
-- `terraform_data`: the built-in replacement, no extra provider needed; uses `triggers_replace`
+- **New (1.4)** `terraform_data`: the built-in replacement, no extra provider needed; uses `triggers_replace` (re-create on change) and `input` / `output` (store a value in state)
 
 ## The fine line: Terraform vs config management
 
@@ -77,3 +99,5 @@ Examples: [`examples/04-provisioners`](../examples/04-provisioners), [`examples/
 
 - The `template_file` data source is the legacy way to render cloud-init; `templatefile()` replaces it
 - Don't hardcode secrets in `environment` blocks
+- The lock file pins providers, not modules, and not Terraform itself (`required_version` does that)
+- `init -upgrade` is the only normal way to move past a locked provider version

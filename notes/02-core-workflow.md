@@ -22,9 +22,11 @@ Run first in any new directory, and again after changing providers, modules or t
 terraform init                    # download providers + modules, create .terraform/ and .terraform.lock.hcl
 terraform init -upgrade           # move providers to the newest version the constraints allow
 terraform init -plugin-dir=PATH   # only look for providers in this local directory
-terraform init -get-plugins=false # old flag to skip provider install; removed from current Terraform, still shows up in courses
 terraform init -lockfile=readonly # fail instead of touching .terraform.lock.hcl
 ```
+
+- **003 only**: `terraform init -get-plugins=false` (skip provider install). Removed in 0.15.0, Terraform now always installs providers; 1.17.0 rejects it with `flag provided but not defined: -get-plugins`
+- Lock file details: [01-fundamentals](01-fundamentals.md#dependency-lock-file-004-2a-3b)
 
 | File / dir | What it is |
 |------------|------------|
@@ -85,6 +87,20 @@ terraform show tfplan                   # read a saved plan
 
 A plan: refreshes state from the real objects, diffs config against state, proposes actions. It never carries them out.
 
+Resource graph (004: 3d, 4f): Terraform turns the config into a dependency graph and walks it, running independent nodes in parallel (`-parallelism=10` by default) and creating dependencies first, destroying in reverse. `terraform graph | dot -Tsvg > graph.svg` draws it (Graphviz).
+
+## Refreshing state (drift)
+
+```bash
+terraform plan -refresh-only     # show what changed outside Terraform
+terraform apply -refresh-only    # review, type yes, then write it into state
+terraform plan -refresh=false    # skip the refresh step (faster, may miss drift)
+terraform refresh                # deprecated: same as apply -refresh-only -auto-approve
+```
+
+- `-refresh-only` arrived in 0.15.4 and is the recommended form; `terraform refresh` is marked deprecated in the docs but still ships (present in 1.17.0, no removal planned)
+- Risk of `refresh`: no review step. With wrong credentials or region Terraform can think everything vanished and drop it all from state
+
 ## `terraform apply`
 
 ```bash
@@ -112,12 +128,13 @@ terraform apply -destroy                   # same thing
 ## Replacing a resource
 
 ```bash
-terraform apply -replace='aws_instance.example[0]'   # preferred
-terraform taint aws_instance.my_web_app              # deprecated (0.15.2): marks it, replaced on next apply
+terraform apply -replace='aws_instance.example[0]'   # preferred (0.15.2+)
+terraform taint aws_instance.my_web_app              # deprecated: marks it, replaced on next apply
 terraform untaint aws_instance.my_web_app
 ```
 
-- `-replace` shows the replacement in the plan before you approve; `taint` changes state first and shows nothing
+- `-replace` shows the replacement in the plan before you approve; `taint` changes state first and shows nothing (someone else could plan against the tainted object before you review)
+- **003 only**: `taint`/`untaint` are deprecated in the v1.12.x docs but still in the 1.17.0 CLI; dropped from the objectives since 003. A resource whose create partly failed is still marked tainted automatically
 - Use it when a resource exists but is broken (degraded, hand-edited) and you want a fresh one
 
 ## Resource addresses
@@ -138,5 +155,6 @@ data.aws_vpc.main                     # a data source
 - `fmt` formats, `validate` checks; neither talks to the cloud
 - `-target` is for emergencies; it skips parts of the graph
 - `apply tfplan` does not ask for approval
-- `taint` is deprecated, reach for `-replace`
+- `taint` is deprecated, reach for `-replace`; `refresh` is deprecated, reach for `-refresh-only`
+- `-get-plugins` no longer exists (removed 0.15)
 - Quote addresses with `[ ]` or `" "` so the shell leaves them alone: `-replace='aws_instance.web["blue"]'`

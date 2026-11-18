@@ -18,7 +18,10 @@ terraform state push backup.tfstate        # overwrite remote state from a local
 terraform state rm 'aws_instance.web[0]'   # forget it, real object is NOT destroyed
 terraform state replace-provider registry.terraform.io/-/aws registry.terraform.io/hashicorp/aws
 terraform state mv SOURCE DESTINATION      # see below
+terraform state identities -json           # New (1.12): resource identities as JSON (only resources whose provider supports identity)
 ```
+
+- 004: 7b ("inspect state with the CLI") covers `list`, `show`, `mv`, `rm`, `pull`/`push`. Commands that change state write a timestamped backup first
 
 ### `state mv`: rename or move without destroy/create
 
@@ -31,22 +34,38 @@ terraform state mv module.app module.parent.module.app                        # 
 - Renaming a resource in config alone makes Terraform plan destroy old + create new. `state mv` updates the reference so nothing is rebuilt
 - Rename the block in the `.tf` file too, then `terraform plan` should say no changes
 
-The config-driven alternative (1.1+) is a `moved` block, which is reviewed in a plan and shared with everyone using the config:
-
-```hcl
-moved {
-  from = aws_instance.worker
-  to   = aws_instance.helper
-}
-```
-
 ### `state rm` then re-adopt
 
 ```bash
 terraform state rm 'terraform_data.web[2]'   # Terraform stops managing it, the real thing stays
 ```
 
-## Refreshing state
+## Refactoring with `moved` and `removed` blocks (004: 6d)
+
+Config-driven versions of `state mv` / `state rm`: they show up in `plan`, get reviewed, and apply for everyone who runs the config (CLI commands only change the one state you point them at).
+
+```hcl
+moved {                               # 1.1+: rename/move, no destroy/create
+  from = aws_instance.worker          # also works for count/for_each keys and modules:
+  to   = aws_instance.helper          #   aws_instance.web[0] -> aws_instance.web["a"], module.a -> module.b
+}
+
+removed {                             # New (1.7): stop managing a resource or module
+  from = aws_instance.legacy          # delete the resource block itself first
+  lifecycle {
+    destroy = false                   # false = forget only (like state rm); true (default) = destroy it
+  }
+}
+```
+
+- Plan output for `removed` with `destroy = false`: "will no longer be managed by Terraform, but will not be destroyed" (tested on 1.17.0 with `terraform_data`)
+- `removed.from` takes a resource or module address, **not** one instance: `aws_instance.web[0]` is an error ("Resource instance keys not allowed")
+- `removed` fails if the resource block is still in the config ("Removed resource still exists")
+- **New (1.9)**: `removed` can hold destroy-time provisioners (`when = destroy`)
+- **New (1.8)**: `moved` can cross resource types when the target provider supports it (e.g. `null_resource` -> `terraform_data`, tested on 1.17.0)
+- Keep `moved` blocks for a while (modules shared with others need them until every caller has applied); `removed` blocks can be deleted after the apply
+
+## Refreshing state (004: 6d drift)
 
 ```bash
 terraform plan  -refresh-only             # show drift (real world differs from state), change nothing
@@ -67,18 +86,38 @@ Scenario: someone deletes a VM in the console on purpose.
 
 Other related flags: `-refresh=false` skips the refresh step (faster, riskier).
 
-## Backends
+Drift workflow: `plan -refresh-only` to see it -> decide who wins -> either `apply -refresh-only` (keep reality, then update the config to match) or a normal `apply` (put reality back to the config).
+
+## Backends (004: 6a local, 6c remote)
 
 A backend decides where state is stored and where operations run. Default (no `backend` block) is `local`.
 
 | Kind | Stores state | Runs operations (plan/apply) | Examples |
 |------|--------------|-------------------------------|----------|
-| Standard | yes | no, your CLI does | `s3`, `azurerm`, `gcs`, `consul`, `pg`, `kubernetes`, `http`, `oss`, `cos`, `swift`, `etcdv3` |
+| Standard | yes | no, your CLI does | `s3`, `azurerm`, `gcs`, `consul`, `pg`, `kubernetes`, `http`, `oss`, `cos`, `oci` (**New (1.12)**) |
 | Enhanced | yes | yes | `local`, `remote` / the `cloud` block |
 
+- **003 only**: `swift`, `etcdv3` (and `artifactory`, `etcd`, `manta`) were removed in 1.3. The current docs also no longer use the words "standard"/"enhanced"; they just list built-in backends
 - Third-party backends are standard backends. They need no HCP Terraform account
-- Locking depends on the backend: S3 (DynamoDB table, or native `use_lockfile` in newer versions), AzureRM, GCS, Consul, Postgres, Kubernetes and OSS (TableStore) lock; Artifactory does not; `http` locking is optional
+- Locking depends on the backend: S3, AzureRM, GCS, Consul, Postgres, Kubernetes, OSS (TableStore) and OCI lock; `http` locking is optional. (**003 only**: Artifactory had no locking, now removed)
 - With a remote backend like S3, a local backup copy of the state still appears on your machine
+
+### S3 locking: `use_lockfile` vs DynamoDB
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket       = "terraform-state000"
+    key          = "statefile"
+    region       = "us-east-1"
+    use_lockfile = true            # writes <key>.tflock next to the state in the bucket
+    # dynamodb_table = "tf-locks"  # deprecated; may be set together with use_lockfile while migrating
+  }
+}
+```
+
+- **New (1.10, experimental) -> GA in 1.11**: native S3 locking with `use_lockfile` (default `false`)
+- DynamoDB locking (`dynamodb_table`, table with a `LockID` string key) is **deprecated since 1.11** and will be removed in a later minor release. It still works (the course and my earlier project used it); switch new setups to `use_lockfile`
 
 ```hcl
 terraform {
@@ -119,6 +158,8 @@ terraform {                       # recommended: the cloud block (tags can selec
 }
 ```
 
+- `cloud` block = recommended since 1.1. `backend "remote"` is not deprecated and still documented, but has fewer features; new configs should use `cloud`. You cannot have both a `cloud` block and a `backend` block
+- `cloud` settings can come from env vars when left out of the block (`TF_CLOUD_ORGANIZATION`, `TF_CLOUD_HOSTNAME`, `TF_CLOUD_PROJECT`, `TF_WORKSPACE`), and `terraform login` stores the API token
 - In remote runs HCP Terraform executes the commands, so provider credentials (e.g. `AWS_ACCESS_KEY_ID`, marked sensitive) must be set as **environment variables in the workspace**, not on your laptop
 
 ### Partial backend configuration
@@ -204,7 +245,7 @@ tags  = { Name = "web-${terraform.workspace}" }
 
 - Local backend: states live in `terraform.tfstate.d/<name>/`; `default` stays in `terraform.tfstate`. Small teams sometimes commit them, but a remote backend is better with several collaborators
 - Remote backend: the workspace states are stored in the backend itself
-- Backends that support multiple workspaces: `local`, `remote`, `s3`, `gcs`, `azurerm`, `consul`, `kubernetes`, `pg`, `cos`, `manta`. One configuration still has one backend, you just get several states without changing credentials
+- Backends that support multiple workspaces (1.12 docs): `local`, `remote`, `s3`, `gcs`, `azurerm`, `consul`, `kubernetes`, `pg`, `cos`, `oss`. (**003 only**: the course list had `manta`, removed in 1.3.) S3 keeps non-default workspaces at `env:/<workspace>/<key>` (`workspace_key_prefix`). One configuration still has one backend, you just get several states without changing credentials
 - Not the same thing as HCP Terraform workspaces, which behave like completely separate working directories (see [07](07-hcp-terraform.md#workspaces-and-runs))
 
 ## Moving local state to HCP Terraform
@@ -226,7 +267,7 @@ terraform {                      # after
 
 Create the workspace in HCP Terraform, change the config, then `terraform init` (add `-migrate-state` to be explicit). Answer `yes` when asked to copy the existing state; `no` starts with an empty state. New configs should use the `cloud` block instead of `backend "remote"`.
 
-## State locking
+## State locking (004: 6b)
 
 - Locking happens automatically on every operation that could write state, with no message unless acquiring the lock is slow
 - `-lock=false` skips it on most commands (not recommended); `-lock-timeout=30s` waits and retries
@@ -251,4 +292,6 @@ terraform force-unlock -force <LOCK_ID>   # skip the confirmation prompt
 - `state rm` does not delete anything real, it only makes Terraform forget
 - `state push` can overwrite a teammate's newer state: `serial` and `lineage` checks guard it, `-force` bypasses them
 - Rename without `state mv` / `moved` = destroy and recreate
+- `removed` defaults to **destroying** the object; add `lifecycle { destroy = false }` to only forget it
+- S3: `dynamodb_table` is deprecated (1.11+); use `use_lockfile = true`
 - `.terraform.tfstate.lock.info` is the state lock, `.terraform.lock.hcl` is the provider dependency lock. Different things

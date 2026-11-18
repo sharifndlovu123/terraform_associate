@@ -34,6 +34,13 @@ The Sentinel example in [`examples/08-hcp-terraform/sentinel`](examples/08-hcp-t
 - [Sentinel and HCP Terraform integration](https://developer.hashicorp.com/terraform/tutorials/policy/sentinel-cloud-integration)
 - [Test Sentinel policies](https://developer.hashicorp.com/terraform/tutorials/policy/sentinel-testing)
 
+The 004 update sweep (see [`SWEEP-004.md`](SWEEP-004.md)) checked the notes against HashiCorp's own material, again paraphrased:
+
+- [Terraform Associate 004 review](https://developer.hashicorp.com/terraform/tutorials/certification-004/associate-review-004) and the Terraform docs on [developer.hashicorp.com](https://developer.hashicorp.com/terraform) (language, CLI and HCP Terraform docs, v1.12.x pages)
+- [Terraform changelogs](https://github.com/hashicorp/terraform/blob/main/CHANGELOG.md) for the versions a feature arrived in
+- [HashiCorp pricing](https://www.hashicorp.com/pricing) and the [HashiCorp blog](https://www.hashicorp.com/blog) for plans and product news
+- [Inject secrets into Terraform using the Vault provider](https://developer.hashicorp.com/terraform/tutorials/secrets/secrets-vault) for [`examples/13-vault`](examples/13-vault)
+
 ## Conventions
 
 - Keep each note short and scannable: bullets, tables, code blocks.
